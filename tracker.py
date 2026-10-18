@@ -45,6 +45,10 @@ def load_bets():
     df["pnl"]        = pd.to_numeric(df["pnl"], errors="coerce")
     df["date"]       = pd.to_datetime(df["date"], errors="coerce")
     df["result"]     = df["result"].astype(str).str.lower().replace("nan", "")
+    # Text columns: an all-empty column is read as float64 (NaN), which breaks
+    # writing text into it (e.g. auto-settle notes). Force them to clean strings.
+    for col in ("fixture", "league", "pick", "notes"):
+        df[col] = df[col].fillna("").astype(str).replace("nan", "")
     return df
 
 
@@ -173,10 +177,10 @@ def auto_settle(verbose=True):
 
         df.at[idx, "result"] = "win" if won else "loss"
         df.at[idx, "pnl"] = auto_pnl(df.loc[idx])
-        df.at[idx, "notes"] = (
-            f"{str(row['notes'] or '').strip()} "
-            f"[auto-settled {hg}-{ag}]"
-        ).strip()
+        note = str(row["notes"]).strip()
+        if note.lower() == "nan":
+            note = ""
+        df.at[idx, "notes"] = f"{note} [auto-settled {hg}-{ag}]".strip()
 
         settled_count += 1
         details.append({

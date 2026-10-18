@@ -1,15 +1,6 @@
 # app.py
 """
-Single-entry daily runner with auto-settle.
-
-Usage:
-    python app.py                  # daily run: fetch if stale, serve UI
-    python app.py --force-refresh  # wipe cache, refetch everything
-    python app.py --no-refresh     # skip fetch, just serve
-    python app.py --scan           # print value bets and exit
-    python app.py --all-matches    # print every upcoming match and exit
-    python app.py --status         # show data freshness and exit
-    python app.py --auto-settle    # settle pending bets and exit
+Single-entry daily runner with auto-settle and hourly recent fetcher.
 """
 import os
 import sys
@@ -29,8 +20,10 @@ from config import (
 
 LAST_FETCH_FILE = "data/last_fetch.txt"
 REFRESH_INTERVAL_HOURS = 24
+RESULTS_DAYS_DEFAULT = 7
 
-AUTO_SETTLE_INTERVAL_SECONDS = 15 * 60   # every 15 minutes
+AUTO_SETTLE_INTERVAL_SECONDS = 15 * 60
+RECENT_FETCH_INTERVAL_SECONDS = 60 * 60  # 1 hour
 
 app = Flask(__name__)
 DF = None
@@ -157,10 +150,11 @@ def run_daily_pipeline(force_no_refresh=False):
                 os.remove(f)
                 print(f"  Removed {f}")
 
-    need_fetch = should_refresh() and not force_no_refresh
-    if need_fetch:
+    need_full_fetch = should_refresh() and not force_no_refresh
+    
+    if need_full_fetch:
         if not AUTO_FETCH:
-            print("Stale data but AUTO_FETCH=False. Skipping fetch.")
+            print("Stale data but AUTO_FETCH=False. Skipping full fetch.")
         else:
             df = fetch_all_leagues()
             if df is None:
@@ -168,8 +162,14 @@ def run_daily_pipeline(force_no_refresh=False):
             save_fetch_time()
     else:
         print(f"✓ Data is fresh (last fetch: {last_fetch_age_str()})")
+        
+        # Even if data is "fresh" (<24h), do a quick fetch to catch 
+        # yesterday's matches that finished since the last run.
+        print("  Checking for recently finished matches...")
+        from fetch_data import fetch_recent_matches
+        fetch_recent_matches(LEAGUES_TO_FETCH, days_back=3)
 
-    if not os.path.exists(MATCHES_XG_CSV) or need_fetch:
+    if not os.path.exists(MATCHES_XG_CSV) or need_full_fetch:
         raw = pd.read_csv(MATCHES_CSV)
         enrich_xg(raw)
     else:
@@ -211,32 +211,153 @@ def invalidate_matches_cache():
 
 
 # ----------------------------------------------------------------------
-# Background auto-settle thread
+# Results loader
+# ----------------------------------------------------------------------
+def load_recent_results(days=RESULTS_DAYS_DEFAULT):
+    if DF is None:
+        return []
+
+    df = DF.copy()
+    df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
+
+    now = pd.Timestamp.now(tz="UTC")
+    cutoff = now - pd.Timedelta(days=days)
+
+    recent = df[(df["date"] >= cutoff) & (df["date"] <= now)].copy()
+    if recent.empty:
+        return []
+
+    recent = recent.sort_values("date", ascending=False)
+    event_ids = recent["event_id"].astype(int).tolist()
+
+    try:
+        from predictions_history import ensure_predictions, get_predictions_for
+        ensure_predictions(df, event_ids, progress=False)
+        pred_map = get_predictions_for(event_ids)
+    except Exception as e:
+        print(f"Predictions history failed: {e}")
+        pred_map = {}
+
+    bets_by_event = {}
+    if os.path.exists("bets_log.csv"):
+        try:
+            bets = pd.read_csv("bets_log.csv")
+            for _, b in bets.iterrows():
+                try:
+                    eid = int(b["event_id"])
+                except (TypeError, ValueError):
+                    continue
+                bets_by_event[eid] = {
+                    "pick":   str(b.get("pick", "")),
+                    "result": str(b.get("result", "")).lower(),
+                    "pnl":    float(b["pnl"]) if pd.notna(b.get("pnl")) else None,
+                }
+        except Exception:
+            pass
+
+    results = []
+    for _, row in recent.iterrows():
+        try:
+            hg = int(row["home_goals"])
+            ag = int(row["away_goals"])
+        except (TypeError, ValueError):
+            continue
+
+        total = hg + ag
+        actual_over = total > 2.5
+        eid = int(row["event_id"])
+
+        pred = pred_map.get(eid)
+        prediction = None
+        if pred:
+            pred_pick = pred.get("pred_over_pick", "")
+            pred_won = (
+                (pred_pick == "Over 2.5" and actual_over) or
+                (pred_pick == "Under 2.5" and not actual_over)
+            )
+            actual_score = f"{hg}-{ag}"
+            top1 = pred.get("top1_score", "")
+            top2 = pred.get("top2_score", "")
+
+            prediction = {
+                "over_pick":   pred_pick,
+                "over_prob":   pred.get("po") if pred_pick == "Over 2.5"
+                               else pred.get("pu"),
+                "over_hit":    pred_won,
+                "top1_score":  top1,
+                "top1_prob":   pred.get("top1_prob"),
+                "top1_hit":    top1 == actual_score,
+                "top2_score":  top2,
+                "top2_prob":   pred.get("top2_prob"),
+                "top2_hit":    top2 == actual_score,
+            }
+
+        results.append({
+            "event_id":    eid,
+            "date":        row["date"].isoformat(),
+            "date_label":  row["date"].strftime("%a %d %b"),
+            "date_key":    row["date"].strftime("%Y-%m-%d"),
+            "time_label":  row["date"].strftime("%H:%M"),
+            "league_id":   int(row["league_id"]),
+            "league_name": league_name(row["league_id"]),
+            "home":        row["home_team"],
+            "away":        row["away_team"],
+            "home_goals":  hg,
+            "away_goals":  ag,
+            "total":       total,
+            "over_hit":    actual_over,
+            "score":       f"{hg}-{ag}",
+            "bet":         bets_by_event.get(eid),
+            "prediction":  prediction,
+        })
+
+    return results
+
+
+# ----------------------------------------------------------------------
+# Background threads
 # ----------------------------------------------------------------------
 def auto_settle_loop():
-    """Runs forever in a daemon thread. Settles every N minutes."""
     while True:
         try:
             time.sleep(AUTO_SETTLE_INTERVAL_SECONDS)
             from tracker import auto_settle
             n, details = auto_settle(verbose=False)
             if n > 0:
-                print(f"\n[AUTO-SETTLE] {n} bet(s) settled:")
-                for d in details:
-                    icon = "🟢" if d["result"] == "win" else "🔴"
-                    print(f"  {icon} {d['fixture'][:40]:<42} "
-                          f"{d['score']:>5}  {d['result']:<5} {d['pnl']:+.2f}u")
-                # Invalidate picks cache so the homepage reflects updates
+                print(f"\n[AUTO-SETTLE] {n} bet(s) settled.")
                 invalidate_matches_cache()
         except Exception as e:
             print(f"[AUTO-SETTLE] error: {e}")
 
 
-def start_auto_settle_thread():
-    t = threading.Thread(target=auto_settle_loop, daemon=True)
-    t.start()
-    print(f"✓ Auto-settle running (every "
+def recent_fetch_loop():
+    while True:
+        try:
+            time.sleep(RECENT_FETCH_INTERVAL_SECONDS)
+            print("\n[RECENT FETCH] Checking for new finished matches...")
+            from fetch_data import fetch_recent_matches
+            fetch_recent_matches(LEAGUES_TO_FETCH, days_back=3)
+            
+            # Reload DF into memory so the UI updates
+            global DF
+            from model import load_data
+            DF = load_data()
+            print("[RECENT FETCH] Dataset reloaded.")
+            invalidate_matches_cache()
+        except Exception as e:
+            print(f"[RECENT FETCH] error: {e}")
+
+
+def start_background_threads():
+    t1 = threading.Thread(target=auto_settle_loop, daemon=True)
+    t1.start()
+    print(f"✓ Auto-settle thread running (every "
           f"{AUTO_SETTLE_INTERVAL_SECONDS // 60} min)")
+
+    t2 = threading.Thread(target=recent_fetch_loop, daemon=True)
+    t2.start()
+    print(f"✓ Recent match fetcher running (every "
+          f"{RECENT_FETCH_INTERVAL_SECONDS // 60} min)")
 
 
 # ----------------------------------------------------------------------
@@ -260,6 +381,16 @@ def index():
     stats = data["stats"]
     last_updated = _MATCHES_CACHE["at"].strftime("%H:%M") \
         if _MATCHES_CACHE["at"] else "—"
+
+    try:
+        results_days = int(request.args.get("results_days",
+                                            RESULTS_DAYS_DEFAULT))
+        if results_days not in (3, 7, 14, 30):
+            results_days = RESULTS_DAYS_DEFAULT
+    except (TypeError, ValueError):
+        results_days = RESULTS_DAYS_DEFAULT
+
+    results = load_recent_results(days=results_days)
 
     if request.method == "POST":
         home_input = request.form.get("home_team", "").strip()
@@ -304,16 +435,15 @@ def index():
         stats=stats,
         picks_last_updated=last_updated,
         last_fetch=last_fetch_age_str(),
+        results=results,
+        results_days=results_days,
     )
 
 
 @app.route("/log_bet/<int:event_id>", methods=["POST"])
 def log_bet(event_id):
-    """One-tap logging from the value bet card."""
     from tracker import add_bet_from_pick
-    from scan import get_todays_matches
 
-    # Get the pick data — from cache if available
     data = load_matches()
     pick = None
     for p in data.get("value_bets", []) + data.get("matches", []):
@@ -338,7 +468,6 @@ def log_bet(event_id):
 def tracker_view():
     from tracker import load_bets, auto_pnl, auto_settle
 
-    # Auto-settle on page load too — instant feedback
     try:
         auto_settle(verbose=False)
     except Exception:
@@ -408,6 +537,16 @@ def api_matches():
     return jsonify(load_matches())
 
 
+@app.route("/api/results")
+def api_results():
+    days = request.args.get("days", RESULTS_DAYS_DEFAULT)
+    try:
+        days = int(days)
+    except ValueError:
+        days = RESULTS_DAYS_DEFAULT
+    return jsonify(load_recent_results(days=days))
+
+
 @app.route("/health")
 def health():
     return {
@@ -430,6 +569,8 @@ def cmd_status():
           f"{'exists' if os.path.exists('data/xg_cache.csv') else 'missing'}")
     print(f"  bets_log.csv         : "
           f"{'exists' if os.path.exists('bets_log.csv') else 'missing'}")
+    print(f"  predictions_history  : "
+          f"{'exists' if os.path.exists('data/predictions_history.csv') else 'missing'}")
     print(f"  last fetch           : {last_fetch_age_str()}")
 
     if os.path.exists("bets_log.csv"):
@@ -523,14 +664,12 @@ if __name__ == "__main__":
         print("\nAborted.")
         sys.exit(0)
 
-    # Auto-settle on startup (catches yesterday's matches)
     try:
         from tracker import auto_settle
         auto_settle(verbose=False)
     except Exception as e:
         print(f"Startup auto-settle failed: {e}")
 
-    # Start the background settle loop
-    start_auto_settle_thread()
+    start_background_threads()
 
     app.run(host="0.0.0.0", port=5000, debug=False)

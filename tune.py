@@ -1,70 +1,52 @@
 # tune.py
-"""Grid-search LAMBDA_BOOST and OVER_THRESHOLD. Run: python tune.py"""
+"""
+Grid-search model hyper-parameters by walk-forward LOG LOSS (not accuracy).
+Run: python tune.py [--start 2025-10-01]
+
+Searches HALF_LIFE_DAYS x RIDGE x XG_WEIGHT; for each, picks the best
+LAMBDA_BOOST (calibration scale). Prints the config lines to paste.
+
+Tip: results within ~0.001 log loss are noise — prefer the simpler/default
+setting unless something clearly wins.
+"""
+import argparse
+import itertools
+import numpy as np
 import pandas as pd
-from config import MATCHES_XG_CSV
-from model import predict_lambdas, over_under_2_5
 
-df = pd.read_csv(MATCHES_XG_CSV)
-df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
-df = df.sort_values("date").reset_index(drop=True)
+from model import load_data
+from backtest import walk_forward, p_over, metrics
 
-START = 200
-print(f"Total matches: {len(df)}   Testing from match {START}\n")
+ap = argparse.ArgumentParser()
+ap.add_argument("--start", default="2025-10-01")
+ap.add_argument("--refit-days", type=int, default=14)
+args = ap.parse_args()
 
-records = []
-for i in range(START, len(df)):
-    row = df.iloc[i]
-    history = df.iloc[:i]
-    try:
-        lh, la = predict_lambdas(history,
-                                 row["home_team_id"],
-                                 row["away_team_id"],
-                                 row["league_id"])
-    except Exception:
-        continue
-    actual_total = row["home_goals"] + row["away_goals"]
-    records.append({
-        "lh": max(lh, 0.15),
-        "la": max(la, 0.15),
-        "actual_over": 1 if actual_total > 2.5 else 0,
-    })
+df = load_data()
+start = pd.Timestamp(args.start, tz="UTC")
+y_all = None
 
-res = pd.DataFrame(records)
-base_over = res["actual_over"].mean()
-lam_sum_mean = (res["lh"] + res["la"]).mean()
-lam_sum_std  = (res["lh"] + res["la"]).std()
+HALF_LIVES = [180, 365, 730]
+RIDGES     = [5, 10, 20]
+XG_WEIGHTS = [0.5, 0.7, 1.0]
+SCALES     = [1.00, 1.03, 1.06, 1.09, 1.12]
 
-print(f"Test matches:     {len(res)}")
-print(f"Base over rate:   {base_over*100:.1f}%")
-print(f"Avg λ sum:        {lam_sum_mean:.2f}   (std: {lam_sum_std:.2f})\n")
+print(f"{'half_life':>9} {'ridge':>6} {'xg_w':>5} {'scale':>6} {'logloss':>9} {'acc':>7}")
+print("-" * 50)
+best = None
+for hl, rg, xw in itertools.product(HALF_LIVES, RIDGES, XG_WEIGHTS):
+    res = walk_forward(df, start, args.refit_days, half_life=hl, ridge=rg, xg_weight=xw)
+    y = res["over"].values
+    scored = [(s, metrics(p_over(res, s), y)) for s in SCALES]
+    s, m = min(scored, key=lambda t: t[1]["logloss"])
+    print(f"{hl:>9} {rg:>6} {xw:>5.1f} {s:>6.2f} {m['logloss']:>9.4f} {m['acc']*100:>6.1f}%")
+    if best is None or m["logloss"] < best[0]:
+        best = (m["logloss"], hl, rg, xw, s, m["acc"])
 
-print(f"{'boost':>6} {'thresh':>7} {'pred_over%':>11} {'acc':>7} {'edge':>7}")
-print("-" * 45)
-
-best = {"acc": 0}
-for boost in [0.95, 1.00, 1.05, 1.10, 1.15, 1.20]:
-    probs = []
-    for _, r in res.iterrows():
-        po, _, _ = over_under_2_5(r["lh"] * boost, r["la"] * boost)
-        probs.append(po)
-    res["po"] = probs
-
-    for thresh in [0.40, 0.45, 0.50, 0.55, 0.60]:
-        pred = (res["po"] > thresh).astype(int)
-        acc  = (pred == res["actual_over"]).mean()
-        edge = acc - base_over
-        pr   = pred.mean()
-        print(f"{boost:>6.2f} {thresh:>7.2f} {pr*100:>10.1f}% "
-              f"{acc*100:>6.1f}% {edge*100:>+6.1f}")
-        if acc > best["acc"]:
-            best = {"acc": acc, "boost": boost, "thresh": thresh,
-                    "pred_over": pr}
-
-print()
-print(f"BEST: boost={best['boost']:.2f}  threshold={best['thresh']:.2f}  "
-      f"accuracy={best['acc']*100:.1f}%  "
-      f"edge={((best['acc']-base_over)*100):+.1f} pts")
-print()
+ll, hl, rg, xw, s, acc = best
+print(f"\nBEST: logloss={ll:.4f}  accuracy={acc*100:.1f}%\n")
 print("Update config.py with:")
-print(f"  LAMBDA_BOOST   = {best['boost']:.2f}")
-print(f"  OVER_THRESHOLD = {best['thresh']:.2f}")
+print(f"  HALF_LIFE_DAYS = {hl}")
+print(f"  RIDGE          = {rg}")
+print(f"  XG_WEIGHT      = {xw}")
+print(f"  LAMBDA_BOOST   = {s:.2f}")

@@ -3,6 +3,7 @@ import os
 import requests
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone, timedelta
 
 from config import (
     BZZOIRO_API_KEY, BZZOIRO_BASE_URL, DATA_DIR,
@@ -151,16 +152,115 @@ def fetch_two_seasons(league_id):
 
     df = pd.DataFrame(current + prev)
     if not df.empty:
-        df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
+        df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True, format="ISO8601")
         df = df.sort_values("date").reset_index(drop=True)
     return df
+
+
+# ----------------------------------------------------------------------
+# Lightweight recent fetch (for hourly updates)
+# ----------------------------------------------------------------------
+def fetch_recent_matches(leagues, days_back=3):
+    """
+    Fetch matches from the last N days that we don't already have.
+    Appends them to matches.csv and matches_with_xg.csv (using goals as xG fallback).
+    """
+    if not os.path.exists(MATCHES_CSV):
+        return
+
+    existing = pd.read_csv(MATCHES_CSV)
+    existing_ids = set(existing["event_id"].astype(int).tolist())
+
+    now = datetime.now(timezone.utc)
+    date_from = (now - timedelta(days=days_back)).strftime("%Y-%m-%d")
+    date_to = now.strftime("%Y-%m-%d")
+
+    new_rows = []
+    for lid in leagues:
+        offset, limit = 0, 200
+        while True:
+            try:
+                r = requests.get(
+                    f"{BZZOIRO_BASE_URL}/events/",
+                    headers=HEADERS,
+                    params={
+                        "league_id": lid,
+                        "date_from": date_from,
+                        "date_to": date_to,
+                        "status": "finished",
+                        "limit": limit,
+                        "offset": offset,
+                    },
+                    timeout=15,
+                )
+            except Exception:
+                break
+
+            if r.status_code != 200:
+                break
+
+            data = r.json()
+            res = data.get("results", [])
+            if not res:
+                break
+
+            for m in res:
+                eid = m.get("id")
+                if eid in existing_ids:
+                    continue
+                if m.get("home_score") is None or m.get("away_score") is None:
+                    continue
+                if not m.get("event_date"):
+                    print(f"  [FETCH RECENT] skipping event {eid}: API returned no date (will retry)")
+                    continue
+
+                new_rows.append({
+                    "event_id":     eid,
+                    "date":         m.get("event_date"),
+                    "league_id":    m.get("league_id"),
+                    "season_id":    m.get("season_id"),
+                    "home_team":    m.get("home_team"),
+                    "home_team_id": m.get("home_team_id"),
+                    "away_team":    m.get("away_team"),
+                    "away_team_id": m.get("away_team_id"),
+                    "home_goals":   m.get("home_score"),
+                    "away_goals":   m.get("away_score"),
+                    "total_goals":  m.get("home_score") + m.get("away_score"),
+                })
+
+            if not data.get("next"):
+                break
+            offset += limit
+
+    if new_rows:
+        print(f"  [FETCH RECENT] Found {len(new_rows)} new finished matches.")
+        new_df = pd.DataFrame(new_rows)
+        
+        # 1. Update matches.csv
+        combined = pd.concat([existing, new_df], ignore_index=True)
+        # format="ISO8601": the CSV holds "2026-10-16 19:00:00+00:00" but the API sends
+        # "2026-10-17T19:00:00Z". Without it pandas coerces the new rows to NaT (blank dates).
+        combined["date"] = pd.to_datetime(combined["date"], errors="coerce", utc=True, format="ISO8601")
+        combined = combined.sort_values("date").reset_index(drop=True)
+        combined.to_csv(MATCHES_CSV, index=False)
+
+        # 2. Update matches_with_xg.csv (use goals as xG proxy to keep it fast)
+        if os.path.exists(MATCHES_XG_CSV):
+            xg_df = pd.read_csv(MATCHES_XG_CSV)
+            new_df_xg = new_df.copy()
+            new_df_xg["home_xg"] = new_df_xg["home_goals"]
+            new_df_xg["away_xg"] = new_df_xg["away_goals"]
+            
+            xg_combined = pd.concat([xg_df, new_df_xg], ignore_index=True)
+            xg_combined["date"] = pd.to_datetime(xg_combined["date"], errors="coerce", utc=True, format="ISO8601")
+            xg_combined = xg_combined.sort_values("date").reset_index(drop=True)
+            xg_combined.to_csv(MATCHES_XG_CSV, index=False)
 
 
 # ----------------------------------------------------------------------
 # Real xG enrichment
 # ----------------------------------------------------------------------
 def fetch_match_xg(event_id):
-    """Fetch xG for one match. Returns dict or None."""
     url = f"{BZZOIRO_BASE_URL}/events/{event_id}/stats/"
     try:
         r = requests.get(url, headers=HEADERS, timeout=20)
@@ -190,7 +290,6 @@ def fetch_match_xg(event_id):
     except (TypeError, ValueError):
         return None
 
-    # Reject NaN/None values
     if pd.isna(hxg) or pd.isna(axg):
         return None
 
@@ -198,7 +297,6 @@ def fetch_match_xg(event_id):
 
 
 def _load_xg_cache():
-    """Load xG cache, skipping any entries with missing/NaN values."""
     if not os.path.exists(XG_CACHE_CSV):
         return {}
     try:
@@ -228,9 +326,6 @@ def _save_xg_cache(cache):
 
 
 def enrich_with_xg(df, progress=True, save_every=100):
-    """
-    Parallel xG enrichment. Failed fetches are NOT cached, so they retry next run.
-    """
     cache = _load_xg_cache()
     total = len(df)
 
@@ -259,7 +354,6 @@ def enrich_with_xg(df, progress=True, save_every=100):
                 if xg:
                     cache[eid] = (xg["home_xg"], xg["away_xg"])
                     fetched_ok += 1
-                # else: don't cache; retry next run
 
                 completed += 1
                 if progress and completed % 100 == 0:
@@ -272,7 +366,6 @@ def enrich_with_xg(df, progress=True, save_every=100):
 
         _save_xg_cache(cache)
 
-    # Build columns — fall back to goals when xG missing
     home_xg_col, away_xg_col = [], []
     fallbacks = 0
     for _, row in df.iterrows():

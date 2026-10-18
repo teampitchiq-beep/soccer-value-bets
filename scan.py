@@ -241,6 +241,13 @@ def get_todays_matches(days=2, min_apps=DEFAULT_MIN_APPS):
             "is_value":     is_value,
         })
 
+    # Save pre-match odds + model probability for later backtesting
+    try:
+        from odds_logger import log_snapshot
+        log_snapshot(matches)
+    except Exception as e:
+        print(f"  (odds logging skipped: {e})")
+
     # ------------------------------------------------------------------
     # Sort All Matches by Over 2.5 probability (highest first)
     # ------------------------------------------------------------------

@@ -15,16 +15,9 @@
             background: #0f172a;
             color: #e2e8f0;
         }
+        @media (min-width: 900px) { body { padding: 24px 32px; max-width: 1500px; } }
+        @media (min-width: 1400px) { body { max-width: 1650px; } }
 
-        /* Widen container on desktop */
-        @media (min-width: 900px) {
-            body { padding: 24px 32px; max-width: 1500px; }
-        }
-        @media (min-width: 1400px) {
-            body { max-width: 1650px; }
-        }
-
-        /* ------------------- Header ------------------- */
         .page-header {
             display: flex;
             justify-content: space-between;
@@ -37,12 +30,7 @@
         h2 { font-size: 1.05rem; margin: 18px 0 10px; color: #cbd5e1; }
         .sub { color: #94a3b8; font-size: 0.8rem; }
 
-        .header-actions {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-            flex-wrap: wrap;
-        }
+        .header-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
         .tracker-link {
             display: inline-block; padding: 8px 14px;
             background: #1e293b; color: #22c55e;
@@ -51,7 +39,6 @@
         }
         .tracker-link:hover { background: #14532d; }
 
-        /* ------------------- Tabs ------------------- */
         .tabs { display: flex; gap: 6px; margin-bottom: 14px; flex-wrap: wrap; }
         .tab {
             padding: 9px 14px; border-radius: 6px; cursor: pointer;
@@ -65,31 +52,19 @@
         }
         .tab.active .badge-count { background: #052e16; color: #86efac; }
 
-        /* ------------------- Flash ------------------- */
         .flash {
             padding: 10px 14px; border-radius: 8px; margin-bottom: 14px;
             font-size: 0.85rem; font-weight: 600;
         }
-        .flash.success {
-            background: #14532d; color: #86efac; border: 1px solid #22c55e;
-        }
-        .flash.warning {
-            background: #422006; color: #fde047; border: 1px solid #eab308;
-        }
-        .flash.info {
-            background: #1e293b; color: #94a3b8; border: 1px solid #334155;
-        }
+        .flash.success { background: #14532d; color: #86efac; border: 1px solid #22c55e; }
+        .flash.warning { background: #422006; color: #fde047; border: 1px solid #eab308; }
+        .flash.info    { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
         .flash a { color: #86efac; text-decoration: underline; }
 
-        /* ------------------- Panels ------------------- */
         .panel { display: none; }
         .panel.active { display: block; }
 
-        /* ------------------- Forms (Single Match) ------------------- */
-        .single-form-wrap {
-            max-width: 600px;
-            margin: 0 auto;
-        }
+        .single-form-wrap { max-width: 600px; margin: 0 auto; }
         form {
             background: #1e293b; padding: 16px;
             border-radius: 10px; margin-bottom: 18px;
@@ -115,10 +90,7 @@
             border-left: 4px solid #22c55e; margin-top: 12px;
         }
         .result.error { border-left-color: #ef4444; }
-        .row {
-            display: flex; justify-content: space-between;
-            padding: 5px 0;
-        }
+        .row { display: flex; justify-content: space-between; padding: 5px 0; }
         .label { color: #94a3b8; }
         .value { font-weight: 600; }
         .over { color: #22c55e; }
@@ -126,7 +98,6 @@
         .scores { margin-top: 10px; padding-left: 20px; }
         .scores li { padding: 3px 0; font-size: 0.9rem; }
 
-        /* ------------------- Badges ------------------- */
         .badge {
             display: inline-block; padding: 3px 10px; border-radius: 12px;
             font-size: 0.7rem; font-weight: 700; letter-spacing: 0.5px;
@@ -139,7 +110,6 @@
             border: 1px solid #06b6d4; margin-left: 6px;
         }
 
-        /* ------------------- Match cards ------------------- */
         .match {
             background: #1e293b; border-radius: 10px; padding: 12px 14px;
             border-left: 4px solid #334155;
@@ -147,26 +117,16 @@
         .match.tier-HIGH   { border-left-color: #22c55e; }
         .match.tier-MEDIUM { border-left-color: #eab308; }
         .match.tier-LOW    { border-left-color: #475569; }
-        .match.is-value    {
-            border-left-color: #06b6d4;
-            box-shadow: 0 0 0 1px #06b6d4;
-        }
+        .match.is-value    { border-left-color: #06b6d4; box-shadow: 0 0 0 1px #06b6d4; }
 
-        /* Responsive grids */
         .match-grid {
             display: grid;
             grid-template-columns: 1fr;
             gap: 12px;
         }
-        @media (min-width: 720px) {
-            .match-grid { grid-template-columns: repeat(2, 1fr); }
-        }
-        @media (min-width: 1100px) {
-            .match-grid { grid-template-columns: repeat(3, 1fr); }
-        }
-        @media (min-width: 1500px) {
-            .match-grid { grid-template-columns: repeat(4, 1fr); }
-        }
+        @media (min-width: 720px)  { .match-grid { grid-template-columns: repeat(2, 1fr); } }
+        @media (min-width: 1100px) { .match-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (min-width: 1500px) { .match-grid { grid-template-columns: repeat(4, 1fr); } }
 
         .value-grid {
             display: grid;
@@ -174,9 +134,7 @@
             gap: 14px;
             max-width: 900px;
         }
-        @media (min-width: 720px) {
-            .value-grid { grid-template-columns: repeat(2, 1fr); }
-        }
+        @media (min-width: 720px) { .value-grid { grid-template-columns: repeat(2, 1fr); } }
 
         .match-header {
             display: flex; justify-content: space-between;
@@ -203,7 +161,6 @@
         .scores-inline { font-size: 0.83rem; color: #cbd5e1; text-align: right; }
         .scores-inline span { color: #22c55e; font-weight: 600; }
 
-        /* ------------------- Controls ------------------- */
         .controls {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 12px; font-size: 0.78rem; color: #94a3b8;
@@ -217,7 +174,6 @@
         }
         .refresh-btn:hover { background: #334155; }
 
-        /* ------------------- Date filter ------------------- */
         .date-filter {
             display: flex; gap: 6px; flex-wrap: wrap;
             margin-bottom: 16px; padding-bottom: 14px;
@@ -228,42 +184,30 @@
             border: 1px solid #334155; border-radius: 20px;
             font-size: 0.78rem; font-weight: 600; cursor: pointer;
             transition: background 0.15s, color 0.15s, border-color 0.15s;
-            user-select: none;
-            width: auto; margin: 0;
+            user-select: none; width: auto; margin: 0;
         }
         .date-btn:hover { background: #334155; color: #e2e8f0; }
-        .date-btn.active {
-            background: #22c55e; color: #052e16; border-color: #22c55e;
-        }
-        .date-btn .dc {
-            font-size: 0.68rem; opacity: 0.7; margin-left: 4px;
-        }
+        .date-btn.active { background: #22c55e; color: #052e16; border-color: #22c55e; }
+        .date-btn .dc { font-size: 0.68rem; opacity: 0.7; margin-left: 4px; }
 
-        /* ------------------- Misc ------------------- */
         .empty {
             background: #1e293b; padding: 24px; border-radius: 10px;
             text-align: center; color: #94a3b8;
         }
         .small { font-size: 0.72rem; color: #64748b; }
-        .pill-row {
-            display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;
-        }
+        .pill-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
         .pill {
             font-size: 0.7rem; padding: 2px 8px; border-radius: 8px;
             background: #0f172a; color: #94a3b8; border: 1px solid #334155;
         }
 
-        /* ------------------- Log-bet mini form ------------------- */
         .log-form {
             margin-top: 10px; padding: 0 !important;
             background: transparent !important;
         }
-        .log-form .log-row {
-            display: flex; gap: 8px; align-items: center;
-        }
+        .log-form .log-row { display: flex; gap: 8px; align-items: center; }
         .log-form input[type="number"] {
-            width: 80px; padding: 6px 8px; font-size: 0.85rem;
-            margin: 0;
+            width: 80px; padding: 6px 8px; font-size: 0.85rem; margin: 0;
         }
         .log-form button {
             flex: 1; margin: 0; padding: 8px; font-size: 0.85rem;
@@ -275,15 +219,166 @@
             display: none; padding: 24px; text-align: center;
             color: #94a3b8; background: #1e293b; border-radius: 10px;
         }
+
+        /* ================= RESULTS TAB ================= */
+        .results-controls {
+            display: flex; gap: 8px; flex-wrap: wrap;
+            margin-bottom: 16px; align-items: center;
+            font-size: 0.8rem; color: #94a3b8;
+        }
+        .results-controls .range-btn {
+            padding: 5px 12px; background: #1e293b; color: #94a3b8;
+            border: 1px solid #334155; border-radius: 20px;
+            font-size: 0.75rem; font-weight: 600; cursor: pointer;
+            text-decoration: none; width: auto; margin: 0;
+        }
+        .results-controls .range-btn.active {
+            background: #22c55e; color: #052e16; border-color: #22c55e;
+        }
+
+        .results-summary {
+            background: #1e293b; border-radius: 10px;
+            padding: 14px 16px; margin-bottom: 18px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+            gap: 12px;
+        }
+        .results-summary .rs-item {
+            border-left: 3px solid #334155; padding-left: 10px;
+        }
+        .results-summary .rs-item.good { border-left-color: #22c55e; }
+        .results-summary .rs-item.bad  { border-left-color: #ef4444; }
+        .results-summary .rs-k {
+            font-size: 0.68rem; color: #94a3b8;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .results-summary .rs-v {
+            font-size: 1.25rem; font-weight: 700; margin-top: 3px;
+        }
+        .results-summary .rs-v.good { color: #22c55e; }
+        .results-summary .rs-v.bad  { color: #ef4444; }
+        .results-summary .rs-sub {
+            font-size: 0.72rem; color: #64748b; margin-top: 2px;
+        }
+
+        .results-day-header {
+            display: flex; align-items: baseline; gap: 12px;
+            margin: 22px 0 10px; padding-bottom: 6px;
+            border-bottom: 1px solid #1e293b;
+        }
+        .results-day-header h3 {
+            margin: 0; font-size: 0.95rem;
+            color: #e2e8f0; font-weight: 700;
+        }
+        .results-day-header .day-count {
+            font-size: 0.75rem; color: #64748b;
+        }
+
+        .result-card {
+            background: #1e293b; border-radius: 10px;
+            padding: 12px 14px; margin-bottom: 10px;
+            border-left: 4px solid #334155;
+        }
+        .result-card.over   { border-left-color: #22c55e; }
+        .result-card.under  { border-left-color: #38bdf8; }
+
+        .result-card .rc-header {
+            display: flex; justify-content: space-between;
+            align-items: center; flex-wrap: wrap; gap: 6px;
+            margin-bottom: 8px;
+        }
+        .rc-league {
+            font-size: 0.68rem; padding: 3px 8px; border-radius: 4px;
+            background: #0f172a; color: #94a3b8;
+            border: 1px solid #334155;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .rc-time { font-size: 0.72rem; color: #94a3b8; }
+        .rc-teams {
+            font-size: 0.95rem; font-weight: 700;
+            margin: 4px 0 10px; line-height: 1.25;
+        }
+
+        .rc-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 10px;
+        }
+        @media (min-width: 700px) {
+            .rc-grid { grid-template-columns: 1fr 1fr; }
+        }
+
+        .rc-panel {
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 8px;
+            padding: 10px 12px;
+        }
+        .rc-panel-title {
+            font-size: 0.65rem; color: #64748b;
+            text-transform: uppercase; letter-spacing: 0.8px;
+            margin-bottom: 8px; font-weight: 700;
+        }
+
+        .rc-line {
+            display: flex; justify-content: space-between;
+            align-items: center; padding: 3px 0;
+            font-size: 0.82rem;
+        }
+        .rc-line .k { color: #94a3b8; }
+        .rc-line .v { font-weight: 600; }
+
+        .rc-verdict {
+            display: inline-block; padding: 2px 8px;
+            border-radius: 10px; font-size: 0.65rem;
+            font-weight: 700; letter-spacing: 0.3px;
+            margin-left: 6px;
+        }
+        .rc-verdict.won {
+            background: #14532d; color: #86efac;
+            border: 1px solid #22c55e;
+        }
+        .rc-verdict.lost {
+            background: #450a0a; color: #fca5a5;
+            border: 1px solid #ef4444;
+        }
+
+        .rc-score {
+            font-size: 1.5rem; font-weight: 700;
+            letter-spacing: 2px; color: #e2e8f0;
+            font-variant-numeric: tabular-nums;
+        }
+        .rc-goal-meta {
+            font-size: 0.75rem; color: #94a3b8;
+            margin-top: 4px;
+        }
+        .rc-goal-meta.over  { color: #22c55e; }
+        .rc-goal-meta.under { color: #38bdf8; }
+
+        .rc-bet {
+            margin-top: 8px; padding-top: 8px;
+            border-top: 1px solid #334155;
+            font-size: 0.75rem;
+            display: flex; justify-content: space-between;
+            align-items: center;
+        }
+        .rc-bet .label-txt { color: #94a3b8; }
+        .bet-pill {
+            display: inline-block; padding: 2px 8px; border-radius: 8px;
+            font-size: 0.65rem; font-weight: 700;
+            letter-spacing: 0.3px;
+        }
+        .bet-pill.win  { background: #14532d; color: #86efac; border: 1px solid #22c55e; }
+        .bet-pill.loss { background: #450a0a; color: #fca5a5; border: 1px solid #ef4444; }
+        .bet-pill.pend { background: #422006; color: #fde047; border: 1px solid #eab308; }
     </style>
 </head>
 <body>
-    <!-- Header row: title + tracker link -->
     <div class="page-header">
         <div>
             <h1>⚽ Soccer Value Bets</h1>
             <div class="sub">
-                Dixon-Coles Poisson · xG-weighted · Bzzoiro API ·
+                Ridge Poisson · xG-weighted · Bzzoiro API ·
                 <span class="small">data: {{ last_fetch }}</span>
             </div>
         </div>
@@ -292,7 +387,6 @@
         </div>
     </div>
 
-    <!-- Tabs -->
     <div class="tabs">
         <div class="tab active" onclick="switchTab('matches', this)">
             📅 All Matches
@@ -302,12 +396,15 @@
             💎 Value Bets
             <span class="badge-count">{{ value_bets|length }}</span>
         </div>
+        <div class="tab" onclick="switchTab('results', this)">
+            📋 Results
+            <span class="badge-count">{{ results|length }}</span>
+        </div>
         <div class="tab" onclick="switchTab('single', this)">
             🔍 Single Match
         </div>
     </div>
 
-    <!-- Flash -->
     {% if request.args.get('msg') == 'logged' %}
         <div class="flash success">
             ✓ Bet logged. View it on the <a href="/tracker">Tracker</a>.
@@ -493,6 +590,179 @@
         {% endif %}
     </div>
 
+    <!-- ================= RESULTS ================= -->
+    <div id="results" class="panel">
+        <div class="results-controls">
+            <span>Showing:</span>
+            <a href="/?tab=results&results_days=3"
+               class="range-btn {% if results_days == 3 %}active{% endif %}">
+                Last 3 days
+            </a>
+            <a href="/?tab=results&results_days=7"
+               class="range-btn {% if results_days == 7 %}active{% endif %}">
+                Last 7 days
+            </a>
+            <a href="/?tab=results&results_days=14"
+               class="range-btn {% if results_days == 14 %}active{% endif %}">
+                Last 14 days
+            </a>
+            <a href="/?tab=results&results_days=30"
+               class="range-btn {% if results_days == 30 %}active{% endif %}">
+                Last 30 days
+            </a>
+        </div>
+
+        {% if results %}
+            {% set with_pred = results | selectattr('prediction') | list %}
+            {% set with_pred_count = with_pred | length %}
+            {% if with_pred_count > 0 %}
+                {% set o_u_wins = with_pred | selectattr('prediction.over_hit') | list | length %}
+                {% set top1_wins = with_pred | selectattr('prediction.top1_hit') | list | length %}
+                {# Top-2 = actual score matched EITHER the top pick or the alt pick (the two are always different scores, so the counts don't overlap) #}
+                {% set top2_wins = top1_wins + (with_pred | selectattr('prediction.top2_hit') | list | length) %}
+                {% set o_u_pct = (o_u_wins / with_pred_count * 100) | round(1) %}
+                {% set top1_pct = (top1_wins / with_pred_count * 100) | round(1) %}
+                {% set top2_pct = (top2_wins / with_pred_count * 100) | round(1) %}
+                <div class="results-summary">
+                    <div class="rs-item {% if o_u_pct >= 55 %}good{% elif o_u_pct < 50 %}bad{% endif %}">
+                        <div class="rs-k">Over/Under Hit Rate</div>
+                        <div class="rs-v {% if o_u_pct >= 55 %}good{% elif o_u_pct < 50 %}bad{% endif %}">
+                            {{ o_u_pct }}%
+                        </div>
+                        <div class="rs-sub">{{ o_u_wins }} / {{ with_pred_count }} matches</div>
+                    </div>
+                    <div class="rs-item {% if top1_pct >= 15 %}good{% endif %}">
+                        <div class="rs-k">Top-1 Score Hit</div>
+                        <div class="rs-v">{{ top1_pct }}%</div>
+                        <div class="rs-sub">{{ top1_wins }} / {{ with_pred_count }}</div>
+                    </div>
+                    <div class="rs-item {% if top2_pct >= 25 %}good{% endif %}">
+                        <div class="rs-k">Top-2 Score Hit</div>
+                        <div class="rs-v">{{ top2_pct }}%</div>
+                        <div class="rs-sub">{{ top2_wins }} / {{ with_pred_count }}</div>
+                    </div>
+                </div>
+            {% endif %}
+
+            {% set ns = namespace(current_date='') %}
+            {% for r in results %}
+                {% if r.date_key != ns.current_date %}
+                    {% set ns.current_date = r.date_key %}
+                    <div class="results-day-header">
+                        <h3>{{ r.date_label }}</h3>
+                        <span class="day-count">
+                            {{ results | selectattr('date_key', 'equalto', r.date_key) | list | length }} matches
+                        </span>
+                    </div>
+                {% endif %}
+
+                <div class="result-card {% if r.over_hit %}over{% else %}under{% endif %}">
+                    <div class="rc-header">
+                        <span class="rc-league">{{ r.league_name }}</span>
+                        <span class="rc-time">{{ r.time_label }}</span>
+                    </div>
+
+                    <div class="rc-teams">{{ r.home }} vs {{ r.away }}</div>
+
+                    <div class="rc-grid">
+                        {% if r.prediction %}
+                            <div class="rc-panel">
+                                <div class="rc-panel-title">Predicted</div>
+
+                                <div class="rc-line">
+                                    <span class="k">
+                                        {% if r.prediction.over_pick == 'Over 2.5' %}🟢{% else %}🔵{% endif %}
+                                        {{ r.prediction.over_pick }}
+                                        ({{ r.prediction.over_prob }}%)
+                                    </span>
+                                    {% if r.prediction.over_hit %}
+                                        <span class="rc-verdict won">✓ WON</span>
+                                    {% else %}
+                                        <span class="rc-verdict lost">✗ LOST</span>
+                                    {% endif %}
+                                </div>
+
+                                <div class="rc-line">
+                                    <span class="k">
+                                        Top score: {{ r.prediction.top1_score }}
+                                        ({{ r.prediction.top1_prob }}%)
+                                    </span>
+                                    {% if r.prediction.top1_hit %}
+                                        <span class="rc-verdict won">✓ WON</span>
+                                    {% else %}
+                                        <span class="rc-verdict lost">✗ LOST</span>
+                                    {% endif %}
+                                </div>
+
+                                <div class="rc-line">
+                                    <span class="k">
+                                        Alt score: {{ r.prediction.top2_score }}
+                                        ({{ r.prediction.top2_prob }}%)
+                                    </span>
+                                    {% if r.prediction.top2_hit %}
+                                        <span class="rc-verdict won">✓ WON</span>
+                                    {% else %}
+                                        <span class="rc-verdict lost">✗ LOST</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="rc-panel">
+                                <div class="rc-panel-title">Predicted</div>
+                                <div class="rc-line">
+                                    <span class="k" style="font-style:italic;color:#64748b;">
+                                        No prediction available
+                                    </span>
+                                </div>
+                            </div>
+                        {% endif %}
+
+                        <div class="rc-panel">
+                            <div class="rc-panel-title">Actual</div>
+                            <div class="rc-score">{{ r.score }}</div>
+                            <div class="rc-goal-meta {% if r.over_hit %}over{% else %}under{% endif %}">
+                                {{ r.total }} goals ·
+                                {% if r.over_hit %}Over 2.5{% else %}Under 2.5{% endif %}
+                            </div>
+
+                            {% if r.bet %}
+                                <div class="rc-bet">
+                                    <span class="label-txt">
+                                        Your bet: {{ r.bet.pick }}
+                                    </span>
+                                    {% if r.bet.result == 'win' %}
+                                        <span class="bet-pill win">
+                                            ✓ WON
+                                            {% if r.bet.pnl is not none %}
+                                                {{ "%+.2f"|format(r.bet.pnl) }}u
+                                            {% endif %}
+                                        </span>
+                                    {% elif r.bet.result == 'loss' %}
+                                        <span class="bet-pill loss">
+                                            ✗ LOST
+                                            {% if r.bet.pnl is not none %}
+                                                {{ "%+.2f"|format(r.bet.pnl) }}u
+                                            {% endif %}
+                                        </span>
+                                    {% else %}
+                                        <span class="bet-pill pend">Pending</span>
+                                    {% endif %}
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        {% else %}
+            <div class="empty">
+                No finished matches in the last {{ results_days }} days.<br>
+                <span class="small">
+                    Try a longer range above, or refresh data.
+                </span>
+            </div>
+        {% endif %}
+    </div>
+
     <!-- ================= SINGLE MATCH ================= -->
     <div id="single" class="panel">
         <div class="single-form-wrap">
@@ -566,7 +836,6 @@
     </div>
 
     <script>
-        // Tab switching
         function switchTab(name, el) {
             document.querySelectorAll('.tab').forEach(
                 t => t.classList.remove('active')
@@ -578,7 +847,6 @@
             document.getElementById(name).classList.add('active');
         }
 
-        // Date filter
         function initDateFilter() {
             const matchCards = document.querySelectorAll(
                 '#matchList .match[data-match-date]'
@@ -640,7 +908,17 @@
             }
         }
 
-        document.addEventListener('DOMContentLoaded', initDateFilter);
+        document.addEventListener('DOMContentLoaded', function() {
+            initDateFilter();
+
+            const params = new URLSearchParams(window.location.search);
+            if (params.get('tab') === 'results') {
+                const tabs = document.querySelectorAll('.tab');
+                if (tabs.length >= 3) {
+                    switchTab('results', tabs[2]);
+                }
+            }
+        });
     </script>
 </body>
 </html>
