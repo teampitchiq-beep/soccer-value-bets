@@ -363,6 +363,53 @@ def start_background_threads():
 # ----------------------------------------------------------------------
 # Routes
 # ----------------------------------------------------------------------
+
+# ----------------------------------------------------------------------
+# Local team lookup (works offline; falls back to the API only if needed)
+# ----------------------------------------------------------------------
+def _norm(text):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(text))
+    return "".join(c for c in t if not unicodedata.combining(c)).lower().strip()
+
+
+def find_team_local(df, name, league_id=None):
+    """Return (team_id, team_name) from the local dataset, or (None, None)."""
+    import difflib
+    if df is None or df.empty or not name:
+        return None, None
+    home = df[["league_id", "home_team_id", "home_team"]]
+    away = df[["league_id", "away_team_id", "away_team"]]
+    home.columns = away.columns = ["league_id", "team_id", "team"]
+    teams = pd.concat([home, away], ignore_index=True)
+    teams["n"] = teams["team"].map(_norm)
+
+    q = _norm(name)
+    pools = []
+    if league_id is not None:
+        pools.append(teams[teams["league_id"] == league_id])
+    pools.append(teams)                     # then any league (e.g. a CL team from another league)
+
+    for pool in pools:
+        if pool.empty:
+            continue
+        counts = pool.groupby(["team_id", "team", "n"]).size().reset_index(name="apps")
+        counts = counts.sort_values("apps", ascending=False)
+        exact = counts[counts["n"] == q]
+        if len(exact):
+            r = exact.iloc[0]
+            return int(r.team_id), r.team
+        contains = counts[counts["n"].str.contains(q, regex=False)]
+        if len(contains):
+            r = contains.iloc[0]
+            return int(r.team_id), r.team
+        close = difflib.get_close_matches(q, counts["n"].tolist(), n=1, cutoff=0.75)
+        if close:
+            r = counts[counts["n"] == close[0]].iloc[0]
+            return int(r.team_id), r.team
+    return None, None
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     from model import full_prediction
@@ -405,8 +452,12 @@ def index():
         elif not home_input or not away_input:
             result = {"error": "Enter both team names."}
         else:
-            hid, hname = find_team(home_input, league_id)
-            aid, aname = find_team(away_input, league_id)
+            hid, hname = find_team_local(DF, home_input, league_id)
+            if not hid:
+                hid, hname = find_team(home_input, league_id)      # API fallback (needs internet)
+            aid, aname = find_team_local(DF, away_input, league_id)
+            if not aid:
+                aid, aname = find_team(away_input, league_id)
             if not hid or not aid:
                 result = {"error": f"Team not found. "
                                    f"Home: {hname or 'x'} | Away: {aname or 'x'}"}

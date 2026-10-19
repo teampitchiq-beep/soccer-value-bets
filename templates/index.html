@@ -766,7 +766,7 @@
     <!-- ================= SINGLE MATCH ================= -->
     <div id="single" class="panel">
         <div class="single-form-wrap">
-            <form method="POST">
+            <form method="POST" action="/?tab=single">
                 <label>League</label>
                 <select name="league_id">
                     {% for lid, lname in leagues %}
@@ -911,12 +911,15 @@
         document.addEventListener('DOMContentLoaded', function() {
             initDateFilter();
 
+            // Pick the starting tab: ?tab=... in the URL, or Single Match after a prediction
+            const tabIndex = {matches: 0, value: 1, results: 2, single: 3};
+            const hasResult = {{ 'true' if result else 'false' }};
             const params = new URLSearchParams(window.location.search);
-            if (params.get('tab') === 'results') {
-                const tabs = document.querySelectorAll('.tab');
-                if (tabs.length >= 3) {
-                    switchTab('results', tabs[2]);
-                }
+            let want = params.get('tab');
+            if (hasResult) want = 'single';
+            const tabs = document.querySelectorAll('.tab');
+            if (want && want in tabIndex && tabs.length > tabIndex[want]) {
+                switchTab(want, tabs[tabIndex[want]]);
             }
         });
     </script>

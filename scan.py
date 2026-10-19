@@ -19,7 +19,7 @@ from config import (
 from model import load_data, predict_lambdas, over_under_2_5
 
 HEADERS = {"Authorization": f"Token {BZZOIRO_API_KEY}"}
-DEFAULT_MIN_APPS = 15
+DEFAULT_MIN_APPS = 10   # total appearances across ALL leagues (was 15 within one league)
 ODDS_WORKERS = 6
 
 
@@ -148,7 +148,13 @@ def get_todays_matches(days=2, min_apps=DEFAULT_MIN_APPS):
     """
     df = load_data()
     df["date"] = pd.to_datetime(df["date"], errors="coerce", utc=True)
-    appearance_counts = build_appearance_index(df)
+    # Appearances are counted across ALL leagues: the model keeps one rating per team
+    # (domestic games inform Champions League predictions), so a CL team with only a few
+    # CL games but a full domestic season has plenty of data. The old per-league count of
+    # 15 silently dropped ~90% of Champions League fixtures.
+    totals = (df["home_team_id"].value_counts()
+              .add(df["away_team_id"].value_counts(), fill_value=0))
+    totals = {int(k): int(v) for k, v in totals.items()}
 
     upcoming = fetch_upcoming(days=days)
 
@@ -156,10 +162,8 @@ def get_todays_matches(days=2, min_apps=DEFAULT_MIN_APPS):
     candidates = []
     skipped_no_history = 0
     for m in upcoming:
-        hk = (int(m["league_id"]), int(m["home_team_id"]))
-        ak = (int(m["league_id"]), int(m["away_team_id"]))
-        ha = appearance_counts.get(hk, 0)
-        aa = appearance_counts.get(ak, 0)
+        ha = totals.get(int(m["home_team_id"]), 0)
+        aa = totals.get(int(m["away_team_id"]), 0)
         if ha < min_apps or aa < min_apps:
             skipped_no_history += 1
             continue
