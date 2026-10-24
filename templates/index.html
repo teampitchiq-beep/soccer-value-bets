@@ -44,12 +44,15 @@
         <button class="dl" type="button" onclick="goTab('cacca')">🚩 Corners Acca</button>
         <button class="dl" type="button" onclick="goTab('ht')">⏱ HT O/U 1.5</button>
         <button class="dl" type="button" onclick="goTab('hacca')">⏱ HT Acca</button>
+        <button class="dl" type="button" onclick="goTab('btts')">⚽ BTTS</button>
+        <button class="dl" type="button" onclick="goTab('bacca')">⚽ BTTS Acca</button>
         <button class="dl" type="button" onclick="goTab('results')">📋 Results</button>
         <button class="dl" type="button" onclick="goTab('single')">🔍 Single Match</button>
         <a href="/tracker">📊 Bet Tracker</a>
         <a href="/acca-tracker">🎯 Acca Tracker</a>
         <a href="/corners-tracker">🚩 Corners Acca Tracker</a>
         <a href="/ht-tracker">⏱ HT Acca Tracker</a>
+        <a href="/btts-tracker">⚽ BTTS Acca Tracker</a>
         <a href="/?refresh=1">↻ Refresh matches</a>
     </aside>
 
@@ -72,6 +75,12 @@
             </button>
             <button class="tab" data-tab="hacca" onclick="switchTab('hacca', this)">
                 ⏱ HT Acca <span class="badge-count">{{ haccas|length }}</span>
+            </button>
+            <button class="tab" data-tab="btts" onclick="switchTab('btts', this)">
+                ⚽ BTTS <span class="badge-count">{{ btts_rows|length }}</span>
+            </button>
+            <button class="tab" data-tab="bacca" onclick="switchTab('bacca', this)">
+                ⚽ BTTS Acca <span class="badge-count">{{ baccas|length }}</span>
             </button>
             <button class="tab" data-tab="results" onclick="switchTab('results', this)">
                 📋 Results <span class="badge-count">{{ results|length }}</span>
@@ -97,6 +106,14 @@
             <div class="flash warning">⚠ That corners acca has changed — check the tab and log it again.</div>
         {% elif msg == 'cacca_skipped' %}
             <div class="flash success">✓ Corners acca skipped. A new one appears when today's matches allow it.</div>
+        {% elif msg == 'bacca_logged' %}
+            <div class="flash success">✓ BTTS acca logged. View it on the <a href="/btts-tracker">BTTS Tracker</a>.</div>
+        {% elif msg == 'bacca_duplicate' %}
+            <div class="flash warning">⚠ This BTTS acca is already in your log.</div>
+        {% elif msg == 'bacca_missing' %}
+            <div class="flash warning">⚠ That BTTS acca has changed — check the tab and log it again.</div>
+        {% elif msg == 'bacca_skipped' %}
+            <div class="flash success">✓ BTTS acca skipped. A new one appears when today's matches allow it.</div>
         {% elif msg == 'hacca_logged' %}
             <div class="flash success">✓ Half-time acca logged. View it on the <a href="/ht-tracker">HT Tracker</a>.</div>
         {% elif msg == 'hacca_duplicate' %}
@@ -154,6 +171,12 @@
                             <div class="mteams">
                                 <span class="t">{{ m.home }}</span>
                                 <span class="t">{{ m.away }}</span>
+                                {% if m.btts %}
+                                    <div class="mbtts" style="font-size:.74rem;margin-top:3px;color:var(--muted);">
+                                        <b class="{{ 'over' if m.btts.is_yes else 'under' }}">{{ m.btts.pick }}</b>
+                                        {{ (m.btts.prob*100)|round(0)|int }}%{% if m.btts.odds %} @ {{ "%.2f"|format(m.btts.odds) }}{% endif %}
+                                    </div>
+                                {% endif %}
                             </div>
                             <div class="mtip {{ 'over' if is_over else 'under' }}">
                                 {{ 'OVER 2.5' if is_over else 'UNDER 2.5' }}
@@ -177,6 +200,12 @@
                                         {{ "%.2f"|format(m.over_odds) if m.over_odds else "—" }} /
                                         {{ "%.2f"|format(m.under_odds) if m.under_odds else "—" }}
                                     </div></div>
+                                {% if m.btts %}
+                                    <div><div class="k">BTTS Yes</div>
+                                        <div class="v over">{{ (m.btts.p_yes*100)|round(1) }}%{% if m.btts.odds_yes %} @ {{ "%.2f"|format(m.btts.odds_yes) }}{% endif %}</div></div>
+                                    <div><div class="k">BTTS No</div>
+                                        <div class="v under">{{ (m.btts.p_no*100)|round(1) }}%{% if m.btts.odds_no %} @ {{ "%.2f"|format(m.btts.odds_no) }}{% endif %}</div></div>
+                                {% endif %}
                                 <div><div class="k">Top scores</div>
                                     <div class="v">
                                         {% for s in m.top_2_scores %}{{ s.score }} {{ s.prob }}%{% if not loop.last %} · {% endif %}{% endfor %}
@@ -617,6 +646,164 @@
             {% endif %}
         </section>
 
+        <!-- ================= BTTS ================= -->
+        <section id="btts" class="panel">
+            <div class="pill-title"><span>Both Teams To Score · Yes / No</span></div>
+            <div class="hint" style="margin:-6px 0 12px;">
+                From the same expected goals as Over/Under 2.5 · bookmaker odds shown when available ·
+                <a href="/btts-tracker">📊 BTTS Acca Tracker</a>
+            </div>
+
+            {% if btts_rows %}
+                <div class="seg" id="bDateFilter">
+                    <button class="date-btn" data-date="all" onclick="filterDate('btts', 'all', this)">
+                        All <span class="dc">{{ btts_rows|length }}</span>
+                    </button>
+                </div>
+                <div class="date-headline" id="bDateHeadline"></div>
+
+                <div class="sec-bar">Both Teams To Score · Yes / No</div>
+                <div class="mlist" id="bttsList">
+                    <div class="mhead">
+                        <span class="c">League</span>
+                        <span>Match</span>
+                        <span class="c">Tip</span>
+                        <span class="c">Prob</span>
+                        <span class="c hide-sm">Odds</span>
+                        <span class="c hide-sm">Exp. goals</span>
+                        <span class="c hide-md">Top score</span>
+                        <span></span>
+                    </div>
+
+                    {% for r in btts_rows %}
+                        <div class="mrow" data-match-date="{{ r.date|eat_date }}" onclick="toggleRow(this)">
+                            <div class="mleague">
+                                <span class="lgcode">{{ LG.get(r.league_name, r.league_name[:3]|upper) }}</span>
+                                <span class="ko">{{ r.date|eat_time }}</span>
+                            </div>
+                            <div class="mteams">
+                                <span class="t">{{ r.home }}</span>
+                                <span class="t">{{ r.away }}</span>
+                            </div>
+                            <div class="mtip {{ 'over' if r.is_yes else 'under' }}">
+                                {{ r.pick|upper }}
+                                <span class="tier {{ r.tier }}">{{ r.tier }}</span>
+                            </div>
+                            <div class="mprob">{{ (r.prob*100)|round(1) }}%</div>
+                            <div class="modds hide-sm">{{ r.odds if r.odds else '—' }}</div>
+                            <div class="mxg hide-sm">{{ r.lh }} – {{ r.la }}</div>
+                            <div class="mscore hide-md">{{ r.top_2_scores[0].score if r.top_2_scores else "—" }}</div>
+                            <button class="mstat" type="button" aria-label="Details">▾</button>
+
+                            <div class="mdetail">
+                                <div><div class="k">BTTS Yes</div><div class="v over">{{ (r.p_yes*100)|round(1) }}%{% if r.odds_yes %} @ {{ r.odds_yes }}{% endif %}</div></div>
+                                <div><div class="k">BTTS No</div><div class="v under">{{ (r.p_no*100)|round(1) }}%{% if r.odds_no %} @ {{ r.odds_no }}{% endif %}</div></div>
+                                <div><div class="k">Value (EV on pick)</div>
+                                    <div class="v {% if r.ev is not none and r.ev > 0 %}over{% endif %}">{% if r.ev is not none %}{{ '%+.1f'|format(r.ev*100) }}%{% else %}no odds{% endif %}</div></div>
+                                <div><div class="k">Expected goals</div><div class="v">{{ r.lh }} + {{ r.la }}</div></div>
+                                <div><div class="k">Top 2 scores</div>
+                                    <div class="v">{% for s in r.top_2_scores %}{{ s.score }} {{ s.prob }}%{% if not loop.last %} · {% endif %}{% endfor %}</div></div>
+                                <div><div class="k">Kickoff</div><div class="v">{{ r.date|eat_full }} EAT</div></div>
+                                <div><div class="k">Data (appearances H / A)</div><div class="v">{{ r.home_apps }} / {{ r.away_apps }}</div></div>
+                                <div><div class="k">League</div><div class="v">{{ r.league_name }}</div></div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="no-filter-results" id="bNoFilter">No matches on this date.</div>
+                <div class="hint" style="margin-top:10px;">
+                    Backtest on your data: Yes picks at 58%+ hit about 62%, 65%+ about 72% (small sample).
+                    Run <code>python btts_backtest.py</code> to re-check.
+                    {% if not btts_rows|selectattr('odds_yes')|list %}No BTTS odds are in today's saved picks: tap ↻ Refresh once to load them.{% endif %}
+                </div>
+            {% else %}
+                <div class="empty">No upcoming matches to predict.<br>
+                    <span class="hint">BTTS uses the same fixtures as All Matches.</span></div>
+            {% endif %}
+        </section>
+
+        <!-- ================= BTTS ACCA ================= -->
+        <section id="bacca" class="panel">
+            <div class="pill-title"><span>Today's BTTS Yes Acca</span></div>
+            <div class="hint" style="margin:-6px 0 12px;">
+                {{ bacca_rules }} ·
+                <a href="/btts-tracker">📊 BTTS Tracker</a>
+            </div>
+
+            {% if baccas %}
+                {% set a = baccas[0] %}
+                {% set resolved = a.legs | selectattr('result') | list | length %}
+                <div class="cards">
+                    <div class="card gold">
+                        <div class="card-head">
+                            <span class="tag">{{ a.date }}</span>
+                            <span class="when">
+                                {% if bacca_cur.status == 'pending' %}⏳ Pending grading · {{ resolved }}/{{ a.n_legs }} legs settled
+                                {% else %}✨ New · {{ a.n_legs }} legs · from {{ a.candidates }} candidates{% endif %}
+                            </span>
+                        </div>
+
+                        {% for l in a.legs %}
+                            <div class="leg">
+                                <div class="teams">
+                                    {% if l.result == 'win' %}✅{% elif l.result == 'loss' %}❌{% else %}⏳{% endif %}
+                                    {{ l.fixture }}
+                                </div>
+                                <div class="hint">{{ l.league }} · {{ l.kickoff|eat_full }} EAT{% if l.score %} · final {{ l.score }}{% endif %}</div>
+                                <div class="leg-row">
+                                    <b class="over">{{ l.pick }}</b>
+                                    <span>@ {{ l.odds }} · model {{ (l.prob*100)|round(1) }}%</span>
+                                </div>
+                            </div>
+                        {% endfor %}
+
+                        <div class="acca-sum">
+                            <span>Combined odds <b>{{ a.odds }}</b></span>
+                            <span>Model {{ (a.prob*100)|round(1) }}% · book {{ (100/a.odds)|round(1) }}%</span>
+                            <span>EV {{ '%+.1f'|format(a.ev*100) }}%</span>
+                        </div>
+
+                        {% if bacca_cur.logged %}
+                            <div class="hint" style="margin-top:10px;">✓ Logged — grading happens automatically on the
+                                <a href="/btts-tracker">BTTS Tracker</a>.</div>
+                        {% else %}
+                            <form method="POST" action="/log_bacca" class="log-form">
+                                <input type="hidden" name="acca_id" value="{{ a.id }}">
+                                <div class="log-row">
+                                    <input type="number" name="stake" value="1.0" min="0.1" step="0.1" aria-label="Stake in units">
+                                    <span class="hint">units</span>
+                                    <button type="submit">✓ Log This Acca</button>
+                                </div>
+                            </form>
+                        {% endif %}
+
+                        <form method="POST" action="/bacca/skip" style="margin-top:10px;"
+                              onsubmit="return confirm('Skip this acca? It will be voided and a new one can be generated.');">
+                            <button class="btn-sm" type="submit">Skip this acca</button>
+                        </form>
+                    </div>
+                </div>
+                <div class="hint" style="margin-top:12px;">
+                    One acca per day. It stays fixed until it is graded; a new one is generated only after that.
+                    Odds are the bookmaker's BTTS Yes prices. Model chance assumes independent matches, so treat the
+                    combined figure as optimistic.
+                </div>
+            {% else %}
+                <div class="empty">{{ bacca_cur.reason or "No acca available right now." }}<br>
+                    <span class="hint">It needs 2+ BTTS Yes picks today (58%+) with bookmaker odds that combine into range.</span><br>
+                    <a href="/?refresh=1&tab=bacca">↻ Refresh</a> closer to kickoff.</div>
+            {% endif %}
+
+            {% if bacca_cur.prev %}
+                {% set pv = bacca_cur.prev %}
+                <div class="hint" style="margin-top:14px;text-align:center;">
+                    Previous acca ({{ pv.acca.date }}, {{ pv.acca.n_legs }} legs @ {{ pv.acca.odds }}):
+                    <b class="{{ 'pos' if pv.result == 'win' else ('neg' if pv.result == 'loss' else '') }}">{{ pv.result|upper }}</b>
+                    {% if pv.note %}· {{ pv.note }}{% endif %}
+                </div>
+            {% endif %}
+        </section>
+
         <!-- ================= RESULTS ================= -->
         <section id="results" class="panel">
             <div class="pill-title"><span>Results</span></div>
@@ -650,7 +837,7 @@
                             <div class="s">{{ top2_wins }} / {{ with_pred_count }}</div></div>
                     </div>
                 {% endif %}
-                {% if rx and (rx.ht_ou[1] or rx.corners[1]) %}
+                {% if rx and (rx.ht_ou[1] or rx.corners[1] or rx.btts[1]) %}
                     <div class="rsum">
                         {% if rx.ht_ou[1] %}
                             {% set hp = (rx.ht_ou[0] / rx.ht_ou[1] * 100) | round(1) %}
@@ -665,6 +852,12 @@
                             <div class="rs"><div class="k">HT top-2 score</div>
                                 <div class="v {% if h2 >= 40 %}good{% endif %}">{{ h2 }}%</div>
                                 <div class="s">{{ rx.ht_top2[0] }} / {{ rx.ht_top2[1] }}</div></div>
+                        {% endif %}
+                        {% if rx.btts[1] %}
+                            {% set bp = (rx.btts[0] / rx.btts[1] * 100) | round(1) %}
+                            <div class="rs"><div class="k">BTTS hit</div>
+                                <div class="v {% if bp >= 55 %}good{% elif bp < 50 %}bad{% endif %}">{{ bp }}%</div>
+                                <div class="s">{{ rx.btts[0] }} / {{ rx.btts[1] }}</div></div>
                         {% endif %}
                         {% if rx.corners[1] %}
                             {% set cp = (rx.corners[0] / rx.corners[1] * 100) | round(1) %}
@@ -724,6 +917,13 @@
                                             {% if r.ht.has_actual %}<span class="verdict {{ 'won' if r.ht.top2_hit else 'lost' }}">{{ '✓ WON' if r.ht.top2_hit else '✗ LOST' }}</span>{% endif %}
                                         </div>
                                     {% endif %}
+                                    {% if r.btts and r.btts.has_pred %}
+                                        <div class="rc-line">
+                                            <span><b class="{{ 'over' if r.btts.pick == 'BTTS Yes' else 'under' }}">{{ r.btts.pick }}</b> ({{ r.btts.prob }}%)</span>
+                                            {% if r.btts.has_actual %}<span class="verdict {{ 'won' if r.btts.hit else 'lost' }}">{{ '✓ WON' if r.btts.hit else '✗ LOST' }}</span>
+                                            {% else %}<span class="verdict pend">No result</span>{% endif %}
+                                        </div>
+                                    {% endif %}
                                     {% if r.corners and r.corners.has_pred %}
                                         <div class="rc-line">
                                             <span><b class="{{ 'over' if r.corners.pick.startswith('Over') else 'under' }}">Corners {{ r.corners.pick }}</b> ({{ r.corners.prob }}%)</span>
@@ -742,6 +942,11 @@
                                     {% if r.ht and r.ht.has_actual %}
                                         <div class="rc-meta {{ 'over' if r.ht.actual_over else 'under' }}">
                                             HT {{ r.ht.score }} · {{ r.ht.total }} goals · {{ 'Over' if r.ht.actual_over else 'Under' }} {{ r.ht.line }}
+                                        </div>
+                                    {% endif %}
+                                    {% if r.btts and r.btts.has_actual %}
+                                        <div class="rc-meta {{ 'over' if r.btts.actual_yes else 'under' }}">
+                                            BTTS {{ 'Yes' if r.btts.actual_yes else 'No' }} · {{ r.btts.ah }}-{{ r.btts.aa }}
                                         </div>
                                     {% endif %}
                                     {% if r.corners and r.corners.has_actual %}
@@ -787,6 +992,8 @@
             <div class="mlist" id="datePickMatches"></div>
             <div class="sec-bar" id="datePickCornersBar" style="display:none;">Corners Predictions</div>
             <div class="mlist" id="datePickCorners"></div>
+            <div class="sec-bar" id="datePickBttsBar" style="display:none;">Both Teams To Score · Yes / No</div>
+            <div class="mlist" id="datePickBtts"></div>
             <div class="sec-bar" id="datePickHtBar" style="display:none;">First-Half Goals · Over / Under 1.5</div>
             <div class="mlist" id="datePickHt"></div>
             <div class="rgrid" id="datePickResults"></div>
@@ -804,10 +1011,20 @@
                             <option value="{{ lid }}" {% if lid == league_id %}selected{% endif %}>{{ lname }}</option>
                         {% endfor %}
                     </select>
-                    <label for="ht">Home Team</label>
-                    <input id="ht" type="text" name="home_team" value="{{ home_input }}" placeholder="e.g. Arsenal" required>
-                    <label for="at">Away Team</label>
-                    <input id="at" type="text" name="away_team" value="{{ away_input }}" placeholder="e.g. Chelsea" required>
+                    <label for="homeSel">Home Team</label>
+                    <select id="homeSel" name="home_team" required>
+                        <option value="">Select home team</option>
+                        {% for n in teams_by_league.get(league_id|string, []) %}
+                            <option value="{{ n }}" {% if n == home_input %}selected{% endif %}>{{ n }}</option>
+                        {% endfor %}
+                    </select>
+                    <label for="awaySel">Away Team</label>
+                    <select id="awaySel" name="away_team" required>
+                        <option value="">Select away team</option>
+                        {% for n in teams_by_league.get(league_id|string, []) %}
+                            <option value="{{ n }}" {% if n == away_input %}selected{% endif %}>{{ n }}</option>
+                        {% endfor %}
+                    </select>
                     <button class="primary" type="submit">Predict</button>
                 </form>
 
@@ -815,6 +1032,13 @@
                     {% if result.error %}
                         <div class="result error"><h2>⚠️ Error</h2><p>{{ result.error }}</p></div>
                     {% else %}
+                        {% macro odds_row(label, pct, real) %}
+                            <div class="row"><span class="label">{{ label }} odds</span>
+                                <span class="value" style="font-size:.9rem;">
+                                    Real {{ ("%.2f"|format(real)) if real else "n/a" }}
+                                    · Model {{ ((100 / pct)|round(2)) if pct else "—" }}
+                                </span></div>
+                        {% endmacro %}
                         <div class="result">
                             <div class="card-head">
                                 <span class="tag">{{ result.league_name }}</span>
@@ -827,6 +1051,8 @@
                                 <span class="value over">{{ result.prob_over_2_5 }}%</span></div>
                             <div class="row"><span class="label">Under 2.5</span>
                                 <span class="value under">{{ result.prob_under_2_5 }}%</span></div>
+                            {{ odds_row('Over 2.5', result.prob_over_2_5, result.real.over25 if result.real else none) }}
+                            {{ odds_row('Under 2.5', result.prob_under_2_5, result.real.under25 if result.real else none) }}
                             <div class="row"><span class="label">Recommendation</span>
                                 <span class="value">{{ result.recommendation }}</span></div>
                             <h2 style="margin-top:14px;">Most likely scores (top 2)</h2>
@@ -835,6 +1061,18 @@
                                     <li>{{ s.score }} — <strong>{{ s.prob }}%</strong></li>
                                 {% endfor %}
                             </ul>
+
+                            {% if result.btts %}
+                                <h2 style="margin-top:14px;">⚽ Both Teams To Score</h2>
+                                <div class="row"><span class="label">BTTS Yes</span>
+                                    <span class="value over">{{ (result.btts.p_yes*100)|round(1) }}%</span></div>
+                                <div class="row"><span class="label">BTTS No</span>
+                                    <span class="value under">{{ (result.btts.p_no*100)|round(1) }}%</span></div>
+                                {{ odds_row('BTTS Yes', result.btts.p_yes*100, result.btts.odds_yes) }}
+                                {{ odds_row('BTTS No', result.btts.p_no*100, result.btts.odds_no) }}
+                                <div class="row"><span class="label">Pick</span>
+                                    <span class="value">{{ result.btts.pick }} · {{ (result.btts.prob*100)|round(1) }}% <span class="tier {{ result.btts.tier }}">{{ result.btts.tier }}</span></span></div>
+                            {% endif %}
 
                             {% if result.ht %}
                                 <h2 style="margin-top:14px;">⏱ First half · Over / Under {{ result.ht.line if result.ht.ok else '1.5' }}</h2>
@@ -845,6 +1083,8 @@
                                         <span class="value over">{{ result.ht.p_over }}%</span></div>
                                     <div class="row"><span class="label">Under {{ result.ht.line }}</span>
                                         <span class="value under">{{ result.ht.p_under }}%</span></div>
+                                    {{ odds_row('Over ' ~ result.ht.line ~ ' HT', result.ht.p_over, none) }}
+                                    {{ odds_row('Under ' ~ result.ht.line ~ ' HT', result.ht.p_under, none) }}
                                     <div class="row"><span class="label">Pick</span>
                                         <span class="value">{{ result.ht.pick }} · {{ result.ht.prob }}% <span class="tier {{ result.ht.tier }}">{{ result.ht.tier }}</span></span></div>
                                     <div class="row"><span class="label">Most likely HT scores</span>
@@ -863,12 +1103,64 @@
                                         <span class="value over">{{ result.corners.p_over }}%</span></div>
                                     <div class="row"><span class="label">Under {{ result.corners.line }}</span>
                                         <span class="value under">{{ result.corners.p_under }}%</span></div>
+                                    {{ odds_row('Over ' ~ result.corners.line, result.corners.p_over, none) }}
+                                    {{ odds_row('Under ' ~ result.corners.line, result.corners.p_under, none) }}
                                     <div class="row"><span class="label">Pick</span>
                                         <span class="value">{{ result.corners.pick }} · {{ result.corners.prob }}% <span class="tier {{ result.corners.tier }}">{{ result.corners.tier }}</span></span></div>
                                 {% else %}
                                     <div class="hint">{{ result.corners.message }}</div>
                                 {% endif %}
                             {% endif %}
+
+                            {% if result.ranked %}
+                                {% set top = result.ranked[0] %}
+                                <h2 style="margin-top:16px;">⭐ Best selection</h2>
+                                <div class="card gold" style="margin-top:8px;">
+                                    <div class="card-head">
+                                        <span class="tag">{{ top.market }}</span>
+                                        {% if top.tier %}<span class="tier {{ top.tier }}">{{ top.tier }}</span>{% endif %}
+                                    </div>
+                                    <div style="font-size:1.25rem;font-weight:800;margin:6px 0;">{{ top.pick }}</div>
+                                    <div class="acca-sum">
+                                        <span>Probability <b>{{ top.prob }}%</b></span>
+                                        <span>Real odds <b>{{ ("%.2f"|format(top.real)) if top.real else "n/a" }}</b></span>
+                                        <span>Model odds <b>{{ top.model }}</b></span>
+                                    </div>
+                                    {% if top.ev is not none %}
+                                        <div class="hint" style="margin-top:8px;">
+                                            Value at the real price:
+                                            <b class="{{ 'pos' if top.ev > 0 else 'neg' }}">{{ '%+.1f'|format(top.ev*100) }}%</b>
+                                            {% if top.ev <= 0 %}(the bookmaker price is shorter than the model's fair price){% endif %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="hint" style="margin-top:10px;">All markets, highest probability first:</div>
+                                {% for i in result.ranked %}
+                                    <div class="row">
+                                        <span class="label">{{ loop.index }}. {{ i.pick }}
+                                            <small style="display:block;color:var(--muted);">{{ i.market }}</small></span>
+                                        <span class="value" style="font-size:.9rem;text-align:right;">
+                                            {{ i.prob }}%<br>
+                                            Real {{ ("%.2f"|format(i.real)) if i.real else "n/a" }} · Model {{ i.model }}
+                                            {% if i.ev is not none %}<br><b class="{{ 'pos' if i.ev > 0 else 'neg' }}">EV {{ '%+.1f'|format(i.ev*100) }}%</b>{% endif %}
+                                        </span>
+                                    </div>
+                                {% endfor %}
+                                <div class="hint" style="margin-top:6px;">
+                                    Ranked by the model's probability for each pick. Markets differ in how reliable they are
+                                    (backtests: BTTS and half-time are well calibrated; 58% picks are close to coin-flips),
+                                    so check the real price (EV) before acting.
+                                </div>
+                            {% endif %}
+
+                            <div class="hint" style="margin-top:12px;">
+                                <b>Real</b> = bookmaker price from today's saved picks
+                                {% if result.real %}(fixture found, kickoff {{ result.real.kickoff|eat_full }} EAT){% else %}(this pairing is not an upcoming fixture in today's saved picks, so it shows n/a){% endif %}.
+                                <b>Model</b> = fair price from the model (100 ÷ probability).
+                                Half-time and corners have no bookmaker odds on the free API plan.
+                                A real price above the model price is value.
+                            </div>
                         </div>
                     {% endif %}
                 {% endif %}
@@ -937,7 +1229,8 @@
         const FILTERS = {
             goals:   {list: '#matchList',  bar: 'dateFilter',  head: 'dateHeadline',  none: 'noFilterResults'},
             corners: {list: '#cornerList', bar: 'cDateFilter', head: 'cDateHeadline', none: 'cNoFilter'},
-            ht:      {list: '#htList',     bar: 'hDateFilter', head: 'hDateHeadline', none: 'hNoFilter'}
+            ht:      {list: '#htList',     bar: 'hDateFilter', head: 'hDateHeadline', none: 'hNoFilter'},
+            btts:    {list: '#bttsList',   bar: 'bDateFilter', head: 'bDateHeadline', none: 'bNoFilter'}
         };
 
         function initDateFilter(key) {
@@ -983,6 +1276,32 @@
             if (none) none.style.display = (visible === 0) ? 'block' : 'none';
         }
 
+        const TEAMS_BY_LEAGUE = {{ teams_by_league|tojson }};
+
+        function fillTeams() {
+            const lg = document.getElementById('lg');
+            if (!lg) return;
+            const names = TEAMS_BY_LEAGUE[lg.value] || [];
+            [['homeSel', 'Select home team'], ['awaySel', 'Select away team']].forEach(([id, ph]) => {
+                const sel = document.getElementById(id);
+                const keep = sel.value;
+                sel.innerHTML = '';
+                const first = document.createElement('option');
+                first.value = ''; first.textContent = ph;
+                sel.appendChild(first);
+                names.forEach(n => {
+                    const o = document.createElement('option');
+                    o.value = n; o.textContent = n;
+                    if (n === keep) o.selected = true;
+                    sel.appendChild(o);
+                });
+            });
+        }
+        document.addEventListener('DOMContentLoaded', function () {
+            const lg = document.getElementById('lg');
+            if (lg) lg.addEventListener('change', fillTeams);
+        });
+
         function setPickedDate(iso) {
             document.getElementById('datePick').value = iso;
             renderPickedDate();
@@ -1002,12 +1321,20 @@
             const rBox = document.getElementById('datePickResults');
             const cBox = document.getElementById('datePickCorners');
             const hBox = document.getElementById('datePickHt');
+            const bBox = document.getElementById('datePickBtts');
             mBox.innerHTML = '';
             cBox.innerHTML = '';
             hBox.innerHTML = '';
+            bBox.innerHTML = '';
             rBox.innerHTML = '';
             let n = 0;
             if (iso) {
+                document.querySelectorAll('#bttsList .mrow[data-match-date="' + iso + '"]').forEach(r => {
+                    const c = r.cloneNode(true);
+                    c.classList.remove('open');
+                    c.style.display = '';
+                    bBox.appendChild(c); n++;
+                });
                 document.querySelectorAll('#htList .mrow[data-match-date="' + iso + '"]').forEach(r => {
                     const c = r.cloneNode(true);
                     c.classList.remove('open');
@@ -1033,6 +1360,7 @@
             document.getElementById('datePickGoalsBar').style.display = mBox.children.length ? '' : 'none';
             document.getElementById('datePickCornersBar').style.display = cBox.children.length ? '' : 'none';
             document.getElementById('datePickHtBar').style.display = hBox.children.length ? '' : 'none';
+            document.getElementById('datePickBttsBar').style.display = bBox.children.length ? '' : 'none';
             document.getElementById('datePickHeadline').textContent = iso ? headline(iso) : '';
             document.getElementById('datePickNone').style.display = (iso && n === 0) ? 'block' : 'none';
         }
@@ -1042,6 +1370,7 @@
             initDateFilter('goals');
             initDateFilter('corners');
             initDateFilter('ht');
+            initDateFilter('btts');
 
             // starting tab: ?tab=... in the URL, or Single Match right after a prediction
             const hasResult = {{ 'true' if result else 'false' }};

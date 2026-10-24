@@ -459,6 +459,7 @@ def load_recent_results(days=RESULTS_DAYS_DEFAULT):
         for r in results:
             r["ht"] = extras.get(r["event_id"], {}).get("ht")
             r["corners"] = extras.get(r["event_id"], {}).get("corners")
+            r["btts"] = extras.get(r["event_id"], {}).get("btts")
     except Exception as e:
         print(f"Results extras failed: {e}")
 
@@ -519,6 +520,11 @@ def auto_settle_loop():
             nh, _ = settle_haccas(verbose=False)
             if nh > 0:
                 print(f"\n[AUTO-SETTLE] {nh} half-time acca(s) settled.")
+            from btts_acca import settle_accas as settle_baccas, grade_current as grade_bcurrent
+            grade_bcurrent()
+            nb, _ = settle_baccas(verbose=False)
+            if nb > 0:
+                print(f"\n[AUTO-SETTLE] {nb} BTTS acca(s) settled.")
         except Exception as e:
             print(f"[AUTO-SETTLE] error: {e}")
 
@@ -587,6 +593,9 @@ def auto_log_loop():
                     from ht_acca import current_hacca, add_acca as add_ht_acca
                     hrows, _ = ht_predictions(matches)
                     _auto_log_current(current_hacca(hrows), add_ht_acca, "Half-time")
+                    from btts_model import btts_predictions
+                    from btts_acca import current_bacca, add_acca as add_btts_acca
+                    _auto_log_current(current_bacca(btts_predictions(matches)), add_btts_acca, "BTTS")
         except Exception as e:
             print(f"[AUTO-LOG] error: {e}")
         time.sleep(AUTO_SETTLE_INTERVAL_SECONDS)
@@ -678,6 +687,54 @@ def _single_extras(hid, aid, league_id):
     return out
 
 
+def _rank_selections(pred):
+    """All markets on the Single Match card as picks, ranked by the model's probability for the
+    chosen side. Each: market, pick, prob (%), tier, real odds (or None), model odds, EV (if real)."""
+    real = pred.get("real") or {}
+    items = []
+
+    def add(market, pick, prob, tier, real_odds):
+        if prob is None:
+            return
+        items.append({"market": market, "pick": pick, "prob": round(float(prob), 1), "tier": tier,
+                      "real": real_odds, "model": round(100 / float(prob), 2),
+                      "ev": round(float(prob) / 100 * real_odds - 1, 3) if real_odds else None})
+
+    po, pu = pred.get("prob_over_2_5"), pred.get("prob_under_2_5")
+    if po is not None and pu is not None:
+        over = po >= pu
+        add("Over/Under 2.5", "Over 2.5" if over else "Under 2.5", po if over else pu,
+            pred.get("confidence"), real.get("over25") if over else real.get("under25"))
+
+    b = pred.get("btts")
+    if b:
+        add("BTTS", b["pick"], b["prob"] * 100, b["tier"], b.get("odds"))
+
+    h = pred.get("ht")
+    if h and h.get("ok"):
+        add("First half O/U 1.5", h["pick"], h["prob"], h["tier"], None)
+
+    c = pred.get("corners")
+    if c and c.get("ok"):
+        add(f"Corners O/U {c['line']:g}", f"{c['pick']} corners", c["prob"], c["tier"], None)
+
+    items.sort(key=lambda i: i["prob"], reverse=True)
+    return items
+
+
+def _cached_fixture(hid, aid):
+    """This pairing's upcoming fixture from today's SAVED picks (never calls the API), or None.
+    Used to show real bookmaker odds on the Single Match card."""
+    data = _MATCHES_CACHE.get("data")
+    if not data:
+        saved = _read_picks_cache(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+        data = saved["data"] if saved else None
+    for m in (data or {}).get("matches", []):
+        if m.get("home_id") == hid and m.get("away_id") == aid:
+            return m
+    return None
+
+
 def find_team_local(df, name, league_id=None):
     """Return (team_id, team_name) from the local dataset, or (None, None)."""
     import difflib
@@ -753,7 +810,7 @@ def index():
         if DF is None or DF.empty:
             result = {"error": "No dataset loaded."}
         elif not home_input or not away_input:
-            result = {"error": "Enter both team names."}
+            result = {"error": "Select both teams."}
         else:
             hid, hname = find_team_local(DF, home_input, league_id)
             if not hid:
@@ -761,7 +818,9 @@ def index():
             aid, aname = find_team_local(DF, away_input, league_id)
             if not aid:
                 aid, aname = find_team(away_input, league_id)
-            if not hid or not aid:
+            if hid and aid and hid == aid:
+                result = {"error": "Pick two different teams."}
+            elif not hid or not aid:
                 result = {"error": f"Team not found. "
                                    f"Home: {hname or 'x'} | Away: {aname or 'x'}"}
             else:
@@ -770,7 +829,19 @@ def index():
                     pred["home_team"] = hname
                     pred["away_team"] = aname
                     pred["league_name"] = league_name(league_id)
+                    fx = _cached_fixture(hid, aid)
+                    pred["real"] = ({"over25": fx.get("over_odds"), "under25": fx.get("under_odds"),
+                                     "btts_yes": fx.get("btts_yes_odds"), "btts_no": fx.get("btts_no_odds"),
+                                     "kickoff": fx.get("date")} if fx else None)
                     pred.update(_single_extras(hid, aid, league_id))     # "ht" and "corners"
+                    try:
+                        from btts_model import single as btts_single
+                        pred["btts"] = btts_single(pred["lambda_home"], pred["lambda_away"],
+                                                   (pred["real"] or {}).get("btts_yes"),
+                                                   (pred["real"] or {}).get("btts_no"))
+                    except Exception as e:
+                        pred["btts"] = None
+                    pred["ranked"] = _rank_selections(pred)
                     result = pred
                 except Exception as e:
                     result = {"error": f"Prediction failed: {e}"}
@@ -817,6 +888,29 @@ def index():
         hacca_cur, haccas, hacca_rules = {"acca": None, "status": "none", "prev": None,
                                           "logged": False, "reason": "Half-time acca unavailable."}, [], ""
 
+    try:
+        from btts_model import btts_predictions
+        from btts_acca import current_bacca, rules_text as bacca_rules_text, add_acca as add_btts_acca
+        btts_rows = btts_predictions(all_matches)
+        _btts_by_id = {r["event_id"]: r for r in btts_rows}
+        for _m in all_matches:                       # so All Matches cards can show BTTS too
+            _m["btts"] = _btts_by_id.get(_m["event_id"])
+        bacca_cur = current_bacca(btts_rows)
+        _auto_log_current(bacca_cur, add_btts_acca, "BTTS")
+        baccas = [bacca_cur["acca"]] if bacca_cur.get("acca") else []
+        bacca_rules = bacca_rules_text()
+    except Exception as e:
+        print(f"BTTS build failed: {e}")
+        btts_rows, baccas, bacca_rules = [], [], ""
+        bacca_cur = {"acca": None, "status": "none", "prev": None, "logged": False,
+                     "reason": "BTTS acca unavailable."}
+
+    teams_by_league = {}
+    if DF is not None and not DF.empty:
+        for lid, g in DF.groupby("league_id"):
+            names = pd.concat([g["home_team"], g["away_team"]]).dropna().astype(str).unique().tolist()
+            teams_by_league[str(int(lid))] = sorted(names, key=str.lower)
+
     leagues_list = sorted(DF["league_id"].unique().tolist()) if DF is not None else []
     leagues_named = [(lid, league_name(lid)) for lid in leagues_list]
 
@@ -842,6 +936,11 @@ def index():
         caccas=caccas,
         cacca_cur=cacca_cur,
         cacca_rules=cacca_rules,
+        teams_by_league=teams_by_league,
+        btts_rows=sorted(btts_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
+        baccas=baccas,
+        bacca_cur=bacca_cur,
+        bacca_rules=bacca_rules,
         ht_rows=sorted(ht_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
         ht_info=ht_info,
         haccas=haccas,
@@ -1047,6 +1146,50 @@ def ht_tracker_view():
         pass
     pending, settled = rows_for_display()
     return render_template("ht_tracker.html", s=summary(),
+                           pending=pending, settled=settled)
+
+
+@app.route("/log_bacca", methods=["POST"])
+def log_bacca():
+    from btts_acca import get_current, add_acca
+
+    acca_id = request.form.get("acca_id", "")
+    try:
+        stake = float(request.form.get("stake", "1.0"))
+    except ValueError:
+        stake = 1.0
+
+    cur = get_current()
+    if cur and cur["id"] == acca_id:
+        ok, _ = add_acca(cur, stake=stake)
+        return redirect(url_for("index", tab="bacca",
+                                msg="bacca_logged" if ok else "bacca_duplicate"))
+    return redirect(url_for("index", tab="bacca", msg="bacca_missing"))
+
+
+@app.route("/bacca/skip", methods=["POST"])
+def skip_bacca():
+    from btts_acca import skip_current
+    skip_current()
+    return redirect(url_for("index", tab="bacca", msg="bacca_skipped"))
+
+
+@app.route("/bacca/void/<acca_id>", methods=["POST"])
+def void_bacca_route(acca_id):
+    from btts_acca import void_acca
+    void_acca(acca_id)
+    return redirect(url_for("btts_tracker_view"))
+
+
+@app.route("/btts-tracker")
+def btts_tracker_view():
+    from btts_acca import settle_accas, summary, rows_for_display
+    try:
+        settle_accas(verbose=False)            # needs internet; silently skipped offline
+    except Exception:
+        pass
+    pending, settled = rows_for_display()
+    return render_template("btts_tracker.html", s=summary(),
                            pending=pending, settled=settled)
 
 

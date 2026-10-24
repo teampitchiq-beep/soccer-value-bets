@@ -16,6 +16,7 @@ import config
 
 HT_PRED = "data/ht_pred_history.csv"
 CO_PRED = "data/corner_pred_history.csv"
+BT_PRED = "data/btts_pred_history.csv"
 COLS = ["event_id", "ok", "pick", "prob", "mu_t", "top1_score", "top1_prob", "top2_score", "top2_prob"]
 
 
@@ -115,11 +116,32 @@ def _co(event_ids):
     return cache, actual, C.LINE
 
 
+# ---------------------------------------------------------------- BTTS
+def _bt_predict(fit, hist, r):
+    from config import LAMBDA_BOOST
+    from model import lambdas_from_fit
+    import btts_model as B
+    lh, la = lambdas_from_fit(fit, r.home_team_id, r.away_team_id, r.league_id)
+    p = B.single(lh * LAMBDA_BOOST, la * LAMBDA_BOOST)
+    return {"pick": p["pick"], "prob": p["prob"], "mu_t": round((lh + la) * LAMBDA_BOOST, 2),
+            "top1_score": f"{p['p_yes']:.4f}"}          # top1_score slot stores P(BTTS Yes)
+
+
+def _bt(event_ids):
+    from model import fit_model, load_data
+    train = load_data()
+    cache = _ensure(BT_PRED, event_ids, train, lambda hist, day: fit_model(hist, now=day), _bt_predict, 10)
+    g = pd.read_csv(config.MATCHES_XG_CSV, usecols=["event_id", "home_goals", "away_goals"])
+    g = g[g["event_id"].isin(event_ids)].dropna()
+    actual = {int(r.event_id): (int(r.home_goals), int(r.away_goals)) for r in g.itertuples()}
+    return cache, actual
+
+
 # ---------------------------------------------------------------- public
 def build_extras(event_ids):
     """{event_id: {"ht": {...} | None, "corners": {...} | None}} for the Results tab."""
     ids = [int(e) for e in event_ids]
-    out = {e: {"ht": None, "corners": None} for e in ids}
+    out = {e: {"ht": None, "corners": None, "btts": None} for e in ids}
 
     try:
         cache, actual, line = _ht(ids)
@@ -161,6 +183,21 @@ def build_extras(event_ids):
             out[e]["corners"] = d
     except Exception as ex:
         print(f"Results (corners) failed: {ex}")
+    try:
+        cache, actual = _bt(ids)
+        pred = {int(r.event_id): r for r in cache[cache["ok"] == 1].itertuples()}
+        for e in ids:
+            p, a = pred.get(e), actual.get(e)
+            if p is None:
+                continue
+            d = {"has_pred": True, "has_actual": a is not None, "pick": p.pick,
+                 "prob": round(p.prob * 100, 1)}
+            if a is not None:
+                d.update(ah=a[0], aa=a[1], actual_yes=a[0] > 0 and a[1] > 0)
+                d["hit"] = (p.pick == "BTTS Yes") == d["actual_yes"]
+            out[e]["btts"] = d
+    except Exception as ex:
+        print(f"Results (BTTS) failed: {ex}")
     return out
 
 
@@ -170,7 +207,7 @@ def summary(results):
         vals = [r[key][flag] for r in results if r.get(key) and flag in r[key]]
         return (sum(1 for v in vals if v), len(vals))
     s = {"ht_ou": tally("ht", "ht", "hit"), "ht_top1": tally("ht", "ht", "top1_hit"),
-         "corners": tally("corners", "corners", "hit")}
+         "corners": tally("corners", "corners", "hit"), "btts": tally("btts", "btts", "hit")}
     t1, n = s["ht_top1"]
     t2 = sum(1 for r in results if r.get("ht") and r["ht"].get("top2_hit"))
     s["ht_top2"] = (t1 + t2, n)           # top-1 and alt are always different scores

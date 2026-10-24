@@ -116,6 +116,8 @@ def fetch_event_odds(event_id):
     return {
         "over_25":  odds.get("over_25_goals"),
         "under_25": odds.get("under_25_goals"),
+        "btts_yes": odds.get("btts_yes"),
+        "btts_no":  odds.get("btts_no"),
     }
 
 
@@ -243,6 +245,8 @@ def get_todays_matches(days=2, min_apps=DEFAULT_MIN_APPS):
             "tier":         tier,
             "over_odds":    over_o,
             "under_odds":   under_o,
+            "btts_yes_odds": odds.get("btts_yes"),
+            "btts_no_odds":  odds.get("btts_no"),
             "model_pick":   model_pick,
             "model_prob":   model_prob,
             "book_odds":    book_odds,
