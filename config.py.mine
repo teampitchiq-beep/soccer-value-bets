@@ -1,0 +1,85 @@
+# config.py
+
+# ============ BZZOIRO API ============
+BZZOIRO_API_KEY  = "e1d8fc3913e24fc92492eb1e5e94ab73af345d38"   # <-- keep YOUR existing key here
+BZZOIRO_BASE_URL = "https://sports.bzzoiro.com/api/v2"
+
+# ============================================================
+#  TOP 10 LEAGUES — FAST MODE
+# ============================================================
+TOP_10_LEAGUES = [
+    1,   # Premier League (England)
+    3,   # La Liga (Spain)
+    4,   # Serie A (Italy)
+    5,   # Bundesliga (Germany)
+    6,   # Ligue 1 (France)
+    2,   # Liga Portugal (Portugal)
+    10,  # Eredivisie (Netherlands)
+    11,  # Süper Lig (Turkey)
+    9,   # Brasileirão Série A (Brazil)
+    7,   # Champions League (Europe)
+    8,  # Europa League (Europe)
+    83,  # Conference League (Europe)
+    54,  # Eliteserien (Norway)
+    15,  # Swiss Super League (Switzerland)
+]
+
+LEAGUE_NAMES = {
+    1:  "Premier League",
+    2:  "Liga Portugal",
+    3:  "La Liga",
+    4:  "Serie A",
+    5:  "Bundesliga",
+    6:  "Ligue 1",
+    7:  "Champions League",
+    9:  "Brasileirão Série A",
+    10: "Eredivisie",
+    11: "Süper Lig",
+    8: "Europa League",
+    83: "Conference League",
+    54: "Eliteserien",
+    15: "Swiss Super League",
+}
+
+def league_name(lid):
+    return LEAGUE_NAMES.get(int(lid), f"League {lid}")
+
+# ============ LEAGUES TO FETCH ============
+LEAGUES_TO_FETCH  = TOP_10_LEAGUES
+DEFAULT_LEAGUE_ID = 1
+
+# ============ PIPELINE BEHAVIOR ============
+AUTO_FETCH    = True
+FORCE_REFRESH = False
+
+# ============ MODEL SETTINGS (ridge Poisson model) ============
+HALF_LIFE_DAYS = 365.0   # match weight halves every N days
+RIDGE          = 10.0    # shrinkage toward league average (higher = more shrinkage)
+XG_WEIGHT      = 0.7     # target = 0.7*xG + 0.3*actual goals
+
+# ============ MODEL CALIBRATION ============
+# Walk-forward tested: 1.06 gives the best log loss. (Old value 1.10 was for the old model.)
+LAMBDA_BOOST    = 1.06
+OVER_THRESHOLD  = 0.50
+
+# ============ CONFIDENCE BANDS ============
+# Re-based on walk-forward hit rates (HIGH over >=0.65 hit ~67%, >=0.70 ~77%)
+HIGH_CONF_OVER_PROB   = 0.65
+HIGH_CONF_UNDER_PROB  = 0.40
+MEDIUM_OVER_PROB      = 0.58
+MEDIUM_UNDER_PROB     = 0.45
+
+# ============ VALUE BETTING ============
+MIN_EV   = 0.03
+MAX_EV   = 0.15
+MIN_ODDS = 1.30
+
+# ============ PERFORMANCE ============
+# Parallel workers for xG enrichment (Bzzoiro has no rate limits)
+XG_WORKERS = 8
+
+# ============ DATA PATHS ============
+DATA_DIR       = "data"
+MATCHES_CSV    = "data/matches.csv"
+MATCHES_XG_CSV = "data/matches_with_xg.csv"
+XG_CACHE_CSV   = "data/xg_cache.csv"

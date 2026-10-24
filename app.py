@@ -2,6 +2,7 @@
 """
 Single-entry daily runner with auto-settle and hourly recent fetcher.
 """
+import json
 import os
 import sys
 import threading
@@ -26,6 +27,57 @@ AUTO_SETTLE_INTERVAL_SECONDS = 15 * 60
 RECENT_FETCH_INTERVAL_SECONDS = 60 * 60  # 1 hour
 
 app = Flask(__name__)
+
+# Display times in Nairobi (EAT, UTC+3, no DST). Stored data stays UTC.
+EAT = timezone(timedelta(hours=3))
+
+
+# Auto-log the daily goals acca and corners acca as soon as they are generated.
+# Set AUTO_LOG_ACCAS = False to go back to logging by hand with the button.
+AUTO_LOG_ACCAS = True
+AUTO_LOG_STAKE = 1.0        # units staked on each auto-logged acca
+
+
+def _auto_log_current(cur, add_fn, label):
+    """cur = result of current_acca()/current_cacca(). Logs it if not logged yet."""
+    try:
+        if AUTO_LOG_ACCAS and cur.get("acca") and not cur.get("logged"):
+            ok, _ = add_fn(cur["acca"], stake=AUTO_LOG_STAKE)
+            if ok:
+                cur["logged"] = True
+                print(f"[AUTO-LOG] {label} acca {cur['acca']['id']} logged "
+                      f"({AUTO_LOG_STAKE}u @ {cur['acca']['odds']}).")
+            else:
+                cur["logged"] = True          # already in the log
+    except Exception as e:
+        print(f"[AUTO-LOG] {label} error: {e}")
+
+
+def _to_eat(value):
+    try:
+        ts = pd.Timestamp(value)
+        ts = ts.tz_localize("UTC") if ts.tzinfo is None else ts.tz_convert("UTC")
+        return ts.astimezone(EAT)
+    except Exception:
+        return None
+
+
+@app.template_filter("eat_date")
+def eat_date(value):
+    t = _to_eat(value)
+    return t.strftime("%Y-%m-%d") if t is not None else str(value)[:10]
+
+
+@app.template_filter("eat_time")
+def eat_time(value):
+    t = _to_eat(value)
+    return t.strftime("%H:%M") if t is not None else str(value)[11:16]
+
+
+@app.template_filter("eat_full")
+def eat_full(value):
+    t = _to_eat(value)
+    return t.strftime("%Y-%m-%d %H:%M") if t is not None else str(value)[:16].replace("T", " ")
 DF = None
 
 _MATCHES_CACHE = {"at": None, "data": None}
@@ -106,6 +158,15 @@ def fetch_all_leagues():
     combined = combined.drop_duplicates(subset=["event_id"]).reset_index(drop=True)
     combined["date"] = pd.to_datetime(combined["date"], errors="coerce", utc=True)
     combined = combined.sort_values("date").reset_index(drop=True)
+    if os.path.exists(MATCHES_CSV):
+        try:
+            old_n = len(pd.read_csv(MATCHES_CSV, usecols=["event_id"]))
+        except Exception:
+            old_n = 0
+        if len(combined) < 0.9 * old_n:
+            print(f"\nWARNING: download incomplete ({len(combined)} vs {old_n} matches on disk, "
+                  f"probably API quota). Keeping your existing data.")
+            return None
     combined.to_csv(MATCHES_CSV, index=False)
     print(f"\n  Total: {len(combined)} matches saved")
     return combined
@@ -139,6 +200,17 @@ def load_dataset():
     return df
 
 
+def _catchup_days():
+    """Days to look back for finished matches: since the newest match on disk (3..30)."""
+    try:
+        newest = pd.to_datetime(pd.read_csv(MATCHES_CSV, usecols=["date"])["date"],
+                                errors="coerce", utc=True).max()
+        gap = (datetime.now(timezone.utc) - newest).days + 1
+        return int(min(max(gap, 3), 30))
+    except Exception:
+        return 3
+
+
 def run_daily_pipeline(force_no_refresh=False):
     global DF
     os.makedirs(DATA_DIR, exist_ok=True)
@@ -150,7 +222,10 @@ def run_daily_pipeline(force_no_refresh=False):
                 os.remove(f)
                 print(f"  Removed {f}")
 
-    need_full_fetch = should_refresh() and not force_no_refresh
+    # A full 2-season, 14-league download costs thousands of API requests. It is only needed
+    # when there is no data yet (or FORCE_REFRESH). Otherwise we just catch up on the matches
+    # played since the newest one on disk.
+    need_full_fetch = (FORCE_REFRESH or not os.path.exists(MATCHES_CSV)) and not force_no_refresh
     
     if need_full_fetch:
         if not AUTO_FETCH:
@@ -158,16 +233,25 @@ def run_daily_pipeline(force_no_refresh=False):
         else:
             df = fetch_all_leagues()
             if df is None:
-                sys.exit(1)
-            save_fetch_time()
+                if os.path.exists(MATCHES_CSV):
+                    print("Full fetch failed — continuing with the data already on disk.")
+                    need_full_fetch = False
+                else:
+                    sys.exit(1)
+            else:
+                save_fetch_time()
     else:
-        print(f"✓ Data is fresh (last fetch: {last_fetch_age_str()})")
+        print(f"✓ Data on disk (last full fetch: {last_fetch_age_str()})")
         
         # Even if data is "fresh" (<24h), do a quick fetch to catch 
         # yesterday's matches that finished since the last run.
-        print("  Checking for recently finished matches...")
-        from fetch_data import fetch_recent_matches
-        fetch_recent_matches(LEAGUES_TO_FETCH, days_back=3)
+        if _job_done_today("recent_fetch"):
+            print("  Recent matches already fetched today — skipping API call.")
+        else:
+            print("  Checking for recently finished matches...")
+            from fetch_data import fetch_recent_matches
+            fetch_recent_matches(LEAGUES_TO_FETCH, days_back=_catchup_days())
+            _mark_job_done("recent_fetch")
 
     if not os.path.exists(MATCHES_XG_CSV) or need_full_fetch:
         raw = pd.read_csv(MATCHES_CSV)
@@ -187,25 +271,75 @@ def run_daily_pipeline(force_no_refresh=False):
 # ----------------------------------------------------------------------
 # Match cache
 # ----------------------------------------------------------------------
+PICKS_CACHE_FILE = os.path.join(DATA_DIR, "picks_cache.json")
+
+
+def _json_default(o):
+    if hasattr(o, "item"):          # numpy scalars
+        return o.item()
+    return str(o)
+
+
+def _read_picks_cache(day):
+    """Today's saved picks (same UTC day), or None."""
+    try:
+        with open(PICKS_CACHE_FILE, encoding="utf-8") as f:
+            blob = json.load(f)
+        if blob.get("day") == day and blob.get("data", {}).get("matches"):
+            return blob
+    except Exception:
+        pass
+    return None
+
+
+def _write_picks_cache(day, stamp, data):
+    try:
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(PICKS_CACHE_FILE, "w", encoding="utf-8") as f:
+            json.dump({"day": day, "stamp": stamp, "data": data}, f, default=_json_default)
+    except Exception as e:
+        print(f"Could not save picks cache: {e}")
+
+
 def load_matches(force=False, days=2):
+    """Fixtures + picks are fetched ONCE per UTC day (the API quota resets at 00:00 UTC),
+    saved to data/picks_cache.json, and reused on every page view and restart.
+    Only the Refresh button (force=True) goes back to the API."""
     from scan import get_todays_matches
 
     now = datetime.now()
-    if (not force and _MATCHES_CACHE["at"] is not None
-            and (now - _MATCHES_CACHE["at"]).total_seconds() < CACHE_MINUTES * 60):
-        return _MATCHES_CACHE["data"]
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    if not force:
+        c = _MATCHES_CACHE
+        if c["data"] is not None and c["at"] is not None:
+            has = bool(c["data"].get("matches")) and not c["data"].get("stats", {}).get("partial")
+            if has and c.get("day") == today:
+                return c["data"]
+            if not has and (now - c["at"]).total_seconds() < CACHE_MINUTES * 60:
+                return c["data"]          # empty result (e.g. quota hit): don't hammer the API
+        saved = _read_picks_cache(today)
+        if saved:
+            _MATCHES_CACHE.update(at=now, data=saved["data"], day=today, stamp=saved.get("stamp"))
+            return saved["data"]
 
     try:
         data = get_todays_matches(days=days)
-        _MATCHES_CACHE["at"] = now
-        _MATCHES_CACHE["data"] = data
+        stamp = datetime.now(EAT).strftime("%H:%M")
+        _MATCHES_CACHE.update(at=now, data=data, day=today, stamp=stamp)
+        if data.get("matches") and not data.get("stats", {}).get("partial"):
+            _write_picks_cache(today, stamp, data)      # complete result only (not a half-failed fetch)
+        elif data.get("stats", {}).get("fetch_errors"):
+            print(f"[FETCH] API problems, not cached for the day: {data['stats']['fetch_errors'][:3]}")
         return data
     except Exception as e:
         print(f"Failed to load matches: {e}")
-        return {"matches": [], "value_bets": [], "stats": {}}
+        return {"matches": [], "stats": {}}
 
 
 def invalidate_matches_cache():
+    """Drops the in-memory copy only. Today's saved picks are re-read from disk,
+    so this no longer causes an API re-fetch."""
     _MATCHES_CACHE["at"] = None
     _MATCHES_CACHE["data"] = None
 
@@ -213,6 +347,14 @@ def invalidate_matches_cache():
 # ----------------------------------------------------------------------
 # Results loader
 # ----------------------------------------------------------------------
+def _results_summary(results):
+    try:
+        from results_extra import summary
+        return summary(results)
+    except Exception:
+        return {}
+
+
 def load_recent_results(days=RESULTS_DAYS_DEFAULT):
     if DF is None:
         return []
@@ -295,9 +437,9 @@ def load_recent_results(days=RESULTS_DAYS_DEFAULT):
         results.append({
             "event_id":    eid,
             "date":        row["date"].isoformat(),
-            "date_label":  row["date"].strftime("%a %d %b"),
-            "date_key":    row["date"].strftime("%Y-%m-%d"),
-            "time_label":  row["date"].strftime("%H:%M"),
+            "date_label":  row["date"].astimezone(EAT).strftime("%a %d %b"),
+            "date_key":    row["date"].astimezone(EAT).strftime("%Y-%m-%d"),
+            "time_label":  row["date"].astimezone(EAT).strftime("%H:%M"),
             "league_id":   int(row["league_id"]),
             "league_name": league_name(row["league_id"]),
             "home":        row["home_team"],
@@ -311,12 +453,48 @@ def load_recent_results(days=RESULTS_DAYS_DEFAULT):
             "prediction":  prediction,
         })
 
+    try:
+        from results_extra import build_extras
+        extras = build_extras([r["event_id"] for r in results])
+        for r in results:
+            r["ht"] = extras.get(r["event_id"], {}).get("ht")
+            r["corners"] = extras.get(r["event_id"], {}).get("corners")
+    except Exception as e:
+        print(f"Results extras failed: {e}")
+
     return results
 
 
 # ----------------------------------------------------------------------
 # Background threads
 # ----------------------------------------------------------------------
+JOBS_FILE = os.path.join(DATA_DIR, "daily_jobs.json")
+
+
+def _job_done_today(name):
+    """True if background job `name` already ran today (UTC day = API quota day)."""
+    try:
+        with open(JOBS_FILE, encoding="utf-8") as f:
+            return json.load(f).get(name) == datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    except Exception:
+        return False
+
+
+def _mark_job_done(name):
+    try:
+        try:
+            with open(JOBS_FILE, encoding="utf-8") as f:
+                jobs = json.load(f)
+        except Exception:
+            jobs = {}
+        jobs[name] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        os.makedirs(DATA_DIR, exist_ok=True)
+        with open(JOBS_FILE, "w", encoding="utf-8") as f:
+            json.dump(jobs, f)
+    except Exception as e:
+        print(f"Could not record job state: {e}")
+
+
 def auto_settle_loop():
     while True:
         try:
@@ -326,29 +504,104 @@ def auto_settle_loop():
             if n > 0:
                 print(f"\n[AUTO-SETTLE] {n} bet(s) settled.")
                 invalidate_matches_cache()
+            from acca import settle_accas, grade_current
+            grade_current()                      # frees the daily acca slot once graded
+            na, _ = settle_accas(verbose=False)
+            if na > 0:
+                print(f"\n[AUTO-SETTLE] {na} acca(s) settled.")
+            from corner_acca import settle_accas as settle_caccas, grade_current as grade_ccurrent
+            grade_ccurrent()
+            nc, _ = settle_caccas(verbose=False)
+            if nc > 0:
+                print(f"\n[AUTO-SETTLE] {nc} corners acca(s) settled.")
+            from ht_acca import settle_accas as settle_haccas, grade_current as grade_hcurrent
+            grade_hcurrent()
+            nh, _ = settle_haccas(verbose=False)
+            if nh > 0:
+                print(f"\n[AUTO-SETTLE] {nh} half-time acca(s) settled.")
         except Exception as e:
             print(f"[AUTO-SETTLE] error: {e}")
 
 
 def recent_fetch_loop():
+    """Once per UTC day: pull newly finished matches. The loop only wakes hourly to check."""
     while True:
         try:
-            time.sleep(RECENT_FETCH_INTERVAL_SECONDS)
-            print("\n[RECENT FETCH] Checking for new finished matches...")
-            from fetch_data import fetch_recent_matches
-            fetch_recent_matches(LEAGUES_TO_FETCH, days_back=3)
-            
-            # Reload DF into memory so the UI updates
-            global DF
-            from model import load_data
-            DF = load_data()
-            print("[RECENT FETCH] Dataset reloaded.")
-            invalidate_matches_cache()
+            if not _job_done_today("recent_fetch"):
+                print("\n[RECENT FETCH] Checking for new finished matches...")
+                from fetch_data import fetch_recent_matches
+                fetch_recent_matches(LEAGUES_TO_FETCH, days_back=_catchup_days())
+
+                # Reload DF into memory so the UI updates
+                global DF
+                from model import load_data
+                DF = load_data()
+                _mark_job_done("recent_fetch")
+                print("[RECENT FETCH] Dataset reloaded.")
+                invalidate_matches_cache()          # memory only; picks re-read from today's file
         except Exception as e:
             print(f"[RECENT FETCH] error: {e}")
+        time.sleep(RECENT_FETCH_INTERVAL_SECONDS)
+
+
+def corners_update_loop():
+    """Once per UTC day: fetch corner counts for newly finished matches (max 400 requests)."""
+    time.sleep(120)                      # let the app finish starting first
+    while True:
+        try:
+            if not _job_done_today("corners_update"):
+                from corners_data import update_corners
+                added = update_corners(max_new=400, verbose=False)
+                _mark_job_done("corners_update")
+                if added:
+                    print(f"\n[CORNERS] {added} match(es) with corner data added.")
+                    invalidate_matches_cache()
+            if not _job_done_today("ht_update"):
+                from ht_data import update_ht
+                added = update_ht(max_new=getattr(__import__("config"), "HT_DAILY_MAX", 500), verbose=False)
+                _mark_job_done("ht_update")
+                if added:
+                    print(f"\n[HALF-TIME] {added} match(es) with half-time score added.")
+                    invalidate_matches_cache()
+        except Exception as e:
+            print(f"[CORNERS] error: {e}")
+        time.sleep(RECENT_FETCH_INTERVAL_SECONDS)
+
+
+def auto_log_loop():
+    """Builds today's goals + corners accas (from the day's saved picks, no extra API
+    calls) and logs them, even if nobody opens the page."""
+    time.sleep(90)
+    while True:
+        try:
+            if AUTO_LOG_ACCAS and DF is not None:
+                matches = load_matches().get("matches", [])
+                if matches:
+                    from acca import current_acca, add_acca as add_goals_acca
+                    _auto_log_current(current_acca(matches), add_goals_acca, "Goals")
+                    from corners_model import corner_predictions
+                    from corner_acca import current_cacca, add_acca as add_corners_acca
+                    rows, _ = corner_predictions(matches)
+                    _auto_log_current(current_cacca(rows), add_corners_acca, "Corners")
+                    from ht_model import ht_predictions
+                    from ht_acca import current_hacca, add_acca as add_ht_acca
+                    hrows, _ = ht_predictions(matches)
+                    _auto_log_current(current_hacca(hrows), add_ht_acca, "Half-time")
+        except Exception as e:
+            print(f"[AUTO-LOG] error: {e}")
+        time.sleep(AUTO_SETTLE_INTERVAL_SECONDS)
 
 
 def start_background_threads():
+    t4 = threading.Thread(target=auto_log_loop, daemon=True)
+    t4.start()
+    print("✓ Auto-log running (goals + corners accas)" if AUTO_LOG_ACCAS
+          else "✓ Auto-log is OFF (log accas by hand)")
+
+    t3 = threading.Thread(target=corners_update_loop, daemon=True)
+    t3.start()
+    print("✓ Corners updater running (once a day)")
+
     t1 = threading.Thread(target=auto_settle_loop, daemon=True)
     t1.start()
     print(f"✓ Auto-settle thread running (every "
@@ -356,8 +609,7 @@ def start_background_threads():
 
     t2 = threading.Thread(target=recent_fetch_loop, daemon=True)
     t2.start()
-    print(f"✓ Recent match fetcher running (every "
-          f"{RECENT_FETCH_INTERVAL_SECONDS // 60} min)")
+    print("✓ Recent match fetcher running (once a day)")
 
 
 # ----------------------------------------------------------------------
@@ -371,6 +623,59 @@ def _norm(text):
     import unicodedata
     t = unicodedata.normalize("NFKD", str(text))
     return "".join(c for c in t if not unicodedata.combining(c)).lower().strip()
+
+
+def _single_extras(hid, aid, league_id):
+    """Half-time and corners predictions for the Single Match card."""
+    out = {"ht": None, "corners": None}
+
+    try:
+        import ht_model as H
+        model = H.get_model()
+        if model is None:
+            out["ht"] = {"ok": False, "message": "No half-time data yet (run python ht_data.py)."}
+        else:
+            fit, info, team = model
+            th, ta = team.get(int(hid)), team.get(int(aid))
+            if not th or not ta or th["n"] < H.MIN_MATCHES or ta["n"] < H.MIN_MATCHES:
+                out["ht"] = {"ok": False, "message": "Not enough half-time history for one of these teams."}
+            else:
+                mh, ma = H.expected_ht(fit, int(hid), int(aid), league_id)
+                po = H.prob_over(mh + ma)
+                over = po >= 0.5
+                prob = po if over else 1 - po
+                out["ht"] = {"ok": True, "line": H.LINE, "mu_h": round(mh, 2), "mu_a": round(ma, 2),
+                             "mu_t": round(mh + ma, 2), "p_over": round(po * 100, 1),
+                             "p_under": round((1 - po) * 100, 1),
+                             "pick": f"{'Over' if over else 'Under'} {H.LINE:g} HT", "is_over": over,
+                             "prob": round(prob * 100, 1), "tier": H._tier(prob),
+                             "top_scores": H.top_scores(mh, ma, n=2)}
+    except Exception as e:
+        out["ht"] = {"ok": False, "message": f"Half-time prediction failed: {e}"}
+
+    try:
+        import corners_model as C
+        model = C.get_model()
+        if model is None:
+            out["corners"] = {"ok": False, "message": "No corner data yet (run python corners_data.py)."}
+        else:
+            fit, phi, info, team = model
+            th, ta = team.get(int(hid)), team.get(int(aid))
+            if not th or not ta or th["n"] < C.MIN_MATCHES or ta["n"] < C.MIN_MATCHES:
+                out["corners"] = {"ok": False, "message": "Not enough corner history for one of these teams."}
+            else:
+                mh, ma = C.expected_corners(fit, int(hid), int(aid), league_id)
+                po = C.prob_over(mh + ma, phi)
+                over = po >= 0.5
+                prob = po if over else 1 - po
+                out["corners"] = {"ok": True, "line": C.LINE, "mu_h": round(mh, 1), "mu_a": round(ma, 1),
+                                  "mu_t": round(mh + ma, 1), "p_over": round(po * 100, 1),
+                                  "p_under": round((1 - po) * 100, 1),
+                                  "pick": f"{'Over' if over else 'Under'} {C.LINE:g}", "is_over": over,
+                                  "prob": round(prob * 100, 1), "tier": C._tier(prob)}
+    except Exception as e:
+        out["corners"] = {"ok": False, "message": f"Corners prediction failed: {e}"}
+    return out
 
 
 def find_team_local(df, name, league_id=None):
@@ -421,13 +726,11 @@ def index():
 
     force_refresh = request.args.get("refresh") == "1"
     data = load_matches(force=force_refresh) if DF is not None else \
-           {"matches": [], "value_bets": [], "stats": {}}
+           {"matches": [], "stats": {}}
 
     all_matches = data["matches"]
-    value_bets = data["value_bets"]
     stats = data["stats"]
-    last_updated = _MATCHES_CACHE["at"].strftime("%H:%M") \
-        if _MATCHES_CACHE["at"] else "—"
+    last_updated = _MATCHES_CACHE.get("stamp") or "—"
 
     try:
         results_days = int(request.args.get("results_days",
@@ -467,9 +770,52 @@ def index():
                     pred["home_team"] = hname
                     pred["away_team"] = aname
                     pred["league_name"] = league_name(league_id)
+                    pred.update(_single_extras(hid, aid, league_id))     # "ht" and "corners"
                     result = pred
                 except Exception as e:
                     result = {"error": f"Prediction failed: {e}"}
+
+    try:
+        from acca import current_acca, rules_text
+        acca_cur = current_acca(all_matches)          # one acca per day, frozen until graded
+        from acca import add_acca as add_goals_acca
+        _auto_log_current(acca_cur, add_goals_acca, "Goals")
+        accas = [acca_cur["acca"]] if acca_cur.get("acca") else []
+        acca_rules = rules_text()
+    except Exception as e:
+        print(f"acca build failed: {e}")
+        acca_cur, accas, acca_rules = {"acca": None, "status": "none", "prev": None,
+                                       "logged": False, "reason": "Acca unavailable."}, [], ""
+
+    try:
+        from corners_model import corner_predictions
+        from corner_acca import current_cacca, rules_text as cacca_rules_text
+        corner_rows, corner_info = corner_predictions(all_matches)
+        cacca_cur = current_cacca(corner_rows)
+        from corner_acca import add_acca as add_corners_acca
+        _auto_log_current(cacca_cur, add_corners_acca, "Corners")
+        caccas = [cacca_cur["acca"]] if cacca_cur.get("acca") else []
+        cacca_rules = cacca_rules_text()
+    except Exception as e:
+        print(f"corners build failed: {e}")
+        corner_rows, corner_info = [], {"ready": False, "line": 8.5, "message": f"Corners unavailable: {e}"}
+        cacca_cur, caccas, cacca_rules = {"acca": None, "status": "none", "prev": None,
+                                          "logged": False, "reason": "Corners acca unavailable."}, [], ""
+
+    try:
+        from ht_model import ht_predictions
+        from ht_acca import current_hacca, rules_text as hacca_rules_text
+        ht_rows, ht_info = ht_predictions(all_matches)
+        hacca_cur = current_hacca(ht_rows)
+        from ht_acca import add_acca as add_ht_acca
+        _auto_log_current(hacca_cur, add_ht_acca, "Half-time")
+        haccas = [hacca_cur["acca"]] if hacca_cur.get("acca") else []
+        hacca_rules = hacca_rules_text()
+    except Exception as e:
+        print(f"half-time build failed: {e}")
+        ht_rows, ht_info = [], {"ready": False, "line": 1.5, "message": f"Half-time unavailable: {e}"}
+        hacca_cur, haccas, hacca_rules = {"acca": None, "status": "none", "prev": None,
+                                          "logged": False, "reason": "Half-time acca unavailable."}, [], ""
 
     leagues_list = sorted(DF["league_id"].unique().tolist()) if DF is not None else []
     leagues_named = [(lid, league_name(lid)) for lid in leagues_list]
@@ -482,37 +828,26 @@ def index():
         league_id=league_id,
         leagues=leagues_named,
         all_matches=all_matches,
-        value_bets=value_bets,
         stats=stats,
         picks_last_updated=last_updated,
         last_fetch=last_fetch_age_str(),
         results=results,
+        rx=_results_summary(results),
         results_days=results_days,
+        accas=accas,
+        acca_cur=acca_cur,
+        acca_rules=acca_rules,
+        corner_rows=sorted(corner_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
+        corner_info=corner_info,
+        caccas=caccas,
+        cacca_cur=cacca_cur,
+        cacca_rules=cacca_rules,
+        ht_rows=sorted(ht_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
+        ht_info=ht_info,
+        haccas=haccas,
+        hacca_cur=hacca_cur,
+        hacca_rules=hacca_rules,
     )
-
-
-@app.route("/log_bet/<int:event_id>", methods=["POST"])
-def log_bet(event_id):
-    from tracker import add_bet_from_pick
-
-    data = load_matches()
-    pick = None
-    for p in data.get("value_bets", []) + data.get("matches", []):
-        if int(p.get("event_id", 0)) == event_id:
-            pick = p
-            break
-
-    if not pick:
-        return redirect(url_for("index", msg="pick_not_found"))
-
-    stake = request.form.get("stake", "1.0")
-    try:
-        stake = float(stake)
-    except ValueError:
-        stake = 1.0
-
-    ok, msg = add_bet_from_pick(pick, stake=stake)
-    return redirect(url_for("index", msg=("logged" if ok else "duplicate")))
 
 
 @app.route("/tracker")
@@ -583,6 +918,138 @@ def tracker_view():
         return f"<pre>Tracker error: {e}</pre>"
 
 
+@app.route("/log_acca", methods=["POST"])
+def log_acca():
+    from acca import get_current, add_acca
+
+    acca_id = request.form.get("acca_id", "")
+    try:
+        stake = float(request.form.get("stake", "1.0"))
+    except ValueError:
+        stake = 1.0
+
+    cur = get_current()                      # the frozen acca currently on screen
+    if cur and cur["id"] == acca_id:
+        ok, _ = add_acca(cur, stake=stake)
+        return redirect(url_for("index", tab="acca",
+                                msg="acca_logged" if ok else "acca_duplicate"))
+    return redirect(url_for("index", tab="acca", msg="acca_missing"))
+
+
+@app.route("/acca/skip", methods=["POST"])
+def skip_acca():
+    from acca import skip_current
+    skip_current()
+    return redirect(url_for("index", tab="acca", msg="acca_skipped"))
+
+
+@app.route("/acca/void/<acca_id>", methods=["POST"])
+def void_acca_route(acca_id):
+    from acca import void_acca
+    void_acca(acca_id)
+    return redirect(url_for("acca_tracker_view"))
+
+
+@app.route("/acca-tracker")
+def acca_tracker_view():
+    from acca import settle_accas, summary, rows_for_display
+    try:
+        settle_accas(verbose=False)            # needs internet; silently skipped offline
+    except Exception:
+        pass
+    pending, settled = rows_for_display()
+    return render_template("acca_tracker.html", s=summary(),
+                           pending=pending, settled=settled)
+
+
+@app.route("/log_cacca", methods=["POST"])
+def log_cacca():
+    from corner_acca import get_current, add_acca
+
+    acca_id = request.form.get("acca_id", "")
+    try:
+        stake = float(request.form.get("stake", "1.0"))
+    except ValueError:
+        stake = 1.0
+
+    cur = get_current()
+    if cur and cur["id"] == acca_id:
+        ok, _ = add_acca(cur, stake=stake, bookmaker_odds=request.form.get("odds", ""))
+        return redirect(url_for("index", tab="cacca",
+                                msg="cacca_logged" if ok else "cacca_duplicate"))
+    return redirect(url_for("index", tab="cacca", msg="cacca_missing"))
+
+
+@app.route("/cacca/skip", methods=["POST"])
+def skip_cacca():
+    from corner_acca import skip_current
+    skip_current()
+    return redirect(url_for("index", tab="cacca", msg="cacca_skipped"))
+
+
+@app.route("/cacca/void/<acca_id>", methods=["POST"])
+def void_cacca_route(acca_id):
+    from corner_acca import void_acca
+    void_acca(acca_id)
+    return redirect(url_for("corners_tracker_view"))
+
+
+@app.route("/corners-tracker")
+def corners_tracker_view():
+    from corner_acca import settle_accas, summary, rows_for_display
+    try:
+        settle_accas(verbose=False)            # needs internet; silently skipped offline
+    except Exception:
+        pass
+    pending, settled = rows_for_display()
+    return render_template("corners_tracker.html", s=summary(),
+                           pending=pending, settled=settled)
+
+
+@app.route("/log_hacca", methods=["POST"])
+def log_hacca():
+    from ht_acca import get_current, add_acca
+
+    acca_id = request.form.get("acca_id", "")
+    try:
+        stake = float(request.form.get("stake", "1.0"))
+    except ValueError:
+        stake = 1.0
+
+    cur = get_current()
+    if cur and cur["id"] == acca_id:
+        ok, _ = add_acca(cur, stake=stake, bookmaker_odds=request.form.get("odds", ""))
+        return redirect(url_for("index", tab="hacca",
+                                msg="hacca_logged" if ok else "hacca_duplicate"))
+    return redirect(url_for("index", tab="hacca", msg="hacca_missing"))
+
+
+@app.route("/hacca/skip", methods=["POST"])
+def skip_hacca():
+    from ht_acca import skip_current
+    skip_current()
+    return redirect(url_for("index", tab="hacca", msg="hacca_skipped"))
+
+
+@app.route("/hacca/void/<acca_id>", methods=["POST"])
+def void_hacca_route(acca_id):
+    from ht_acca import void_acca
+    void_acca(acca_id)
+    return redirect(url_for("ht_tracker_view"))
+
+
+@app.route("/ht-tracker")
+def ht_tracker_view():
+    from ht_acca import settle_accas, summary, rows_for_display
+    try:
+        settle_accas(verbose=False)            # needs internet; silently skipped offline
+    except Exception:
+        pass
+    pending, settled = rows_for_display()
+    return render_template("ht_tracker.html", s=summary(),
+                           pending=pending, settled=settled)
+
+
 @app.route("/api/matches")
 def api_matches():
     return jsonify(load_matches())
@@ -634,7 +1101,7 @@ def cmd_status():
             pass
 
 
-def cmd_scan(show_all=False):
+def cmd_scan():
     from scan import get_todays_matches
     result = get_todays_matches(days=2)
     s = result["stats"]
@@ -643,35 +1110,20 @@ def cmd_scan(show_all=False):
     print("  DAILY SCAN")
     print("=" * 78)
     print(f"  Upcoming: {s['total_upcoming']}  |  "
-          f"With history: {s['with_history']}  |  "
-          f"Value bets: {s['value_bets_count']}\n")
+          f"With history: {s['with_history']}\n")
 
-    if show_all:
-        for m in result["matches"]:
-            icon = "🟢" if m["po"] >= 50 else "🔵"
-            print(f"{icon}  {m['date'][:16]}  [{m['league_name']}]")
-            print(f"     {m['home']} vs {m['away']}")
-            print(f"     Over 2.5: {m['po']}%   Under: {m['pu']}%   {m['tier']}")
-            print(f"     xG: {m['lh']} – {m['la']}")
-            top = m["top_2_scores"]
-            if top:
-                print(f"     Top: {top[0]['score']} ({top[0]['prob']}%)"
-                      + (f", {top[1]['score']} ({top[1]['prob']}%)"
-                         if len(top) > 1 else ""))
-            if m["ev"] is not None:
-                print(f"     EV: {m['ev']*100:+.1f}%")
-            print()
-    else:
-        if not result["value_bets"]:
-            print("No value bets found.")
-            return
-        for p in result["value_bets"]:
-            icon = "🟢" if p["model_pick"] == "Over 2.5" else "🔵"
-            print(f"{icon}  {p['date'][:16]}  [{p['league_name']}]")
-            print(f"     {p['home']} vs {p['away']}")
-            print(f"     PICK: {p['model_pick']}  @ {p['book_odds']:.2f}")
-            print(f"     Edge: {p['ev']*100:+.1f}%")
-            print(f"     Event ID: {p['event_id']}")
+    for m in result["matches"]:
+        icon = "🟢" if m["po"] >= 50 else "🔵"
+        print(f"{icon}  {m['date'][:16]}  [{m['league_name']}]")
+        print(f"     {m['home']} vs {m['away']}")
+        print(f"     Over 2.5: {m['po']}%   Under: {m['pu']}%   {m['tier']}")
+        print(f"     xG: {m['lh']} – {m['la']}")
+        top = m["top_2_scores"]
+        if top:
+            print(f"     Top: {top[0]['score']} ({top[0]['prob']}%)"
+                  + (f", {top[1]['score']} ({top[1]['prob']}%)"
+                     if len(top) > 1 else ""))
+        print()
 
 
 if __name__ == "__main__":
@@ -693,7 +1145,7 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"Failed to load: {e}")
                 sys.exit(1)
-        cmd_scan(show_all=False)
+        cmd_scan()
         sys.exit(0)
 
     if "--all-matches" in sys.argv:
@@ -704,7 +1156,7 @@ if __name__ == "__main__":
             except Exception as e:
                 print(f"Failed to load: {e}")
                 sys.exit(1)
-        cmd_scan(show_all=True)
+        cmd_scan()
         sys.exit(0)
 
     force_no_refresh = "--no-refresh" in sys.argv

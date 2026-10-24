@@ -1,10 +1,11 @@
 # backtest.py
 """
-Walk-forward backtest. Run: python backtest.py [--start 2025-10-01] [--refit-days 14]
+Walk-forward backtest. Run: python backtest.py [--start 2025-10-01] [--refit-days 14] [--min-n 60]
 
 Each match is predicted using ONLY earlier matches (model refit every N days).
 Reports log loss / Brier / accuracy vs. a constant "base rate" baseline,
-a calibration table, and hit rates for the confidence bands.
+a calibration table, hit rates for the confidence bands, and a PER-LEAGUE
+breakdown showing where the model actually beats the base rate.
 
 Log loss is the number to watch: it must beat the baseline to prove the
 probabilities carry real information. (Accuracy alone is misleading.)
@@ -13,7 +14,7 @@ import argparse
 import numpy as np
 import pandas as pd
 
-from config import LAMBDA_BOOST, HIGH_CONF_OVER_PROB, HIGH_CONF_UNDER_PROB
+from config import LAMBDA_BOOST, HIGH_CONF_OVER_PROB, HIGH_CONF_UNDER_PROB, league_name
 from model import load_data, fit_model, lambdas_from_fit, over_under_2_5
 
 
@@ -33,6 +34,11 @@ def p_over(res, scale):
     return np.array([over_under_2_5(a * scale, b * scale)[0] for a, b in zip(res.lh, res.la)])
 
 
+def per_match_ll(p, y):
+    p = np.clip(p, 1e-4, 1 - 1e-4)
+    return -(y * np.log(p) + (1 - y) * np.log(1 - p))
+
+
 def metrics(p, y):
     p = np.clip(p, 1e-4, 1 - 1e-4)
     return {"logloss": -np.mean(y * np.log(p) + (1 - y) * np.log(1 - p)),
@@ -40,10 +46,57 @@ def metrics(p, y):
             "acc": np.mean((p > 0.5) == y)}
 
 
+def league_breakdown(df, res, p, y, start, min_n):
+    """Per-league comparison of the model vs that league's own base rate."""
+    train = df[df["date"] < start]
+    global_rate = (train["total_goals"] > 2.5).mean()
+    lg = df.loc[res.index, "league_id"].values
+
+    rows = []
+    for lid in pd.unique(lg):
+        mask = lg == lid
+        n = int(mask.sum())
+        tr = train[train["league_id"] == lid]
+        base = (tr["total_goals"] > 2.5).mean() if len(tr) >= 30 else global_rate
+        ll_model = per_match_ll(p[mask], y[mask])
+        ll_base = per_match_ll(np.full(n, base), y[mask])
+        diff = ll_base - ll_model                      # positive = model better
+        gain = diff.mean()
+        se = diff.std(ddof=1) / np.sqrt(n) if n > 1 else float("nan")
+        if n < min_n:
+            verdict = "too few"
+        elif gain - 1.96 * se > 0:
+            verdict = "EDGE"
+        elif gain + 1.96 * se < 0:
+            verdict = "WORSE"
+        else:
+            verdict = "unclear"
+        rows.append({"league": league_name(lid), "n": n,
+                     "actual": y[mask].mean() * 100, "pred": p[mask].mean() * 100,
+                     "gain": gain, "se": se, "acc": ((p[mask] > 0.5) == y[mask]).mean() * 100,
+                     "verdict": verdict})
+    out = pd.DataFrame(rows).sort_values("gain", ascending=False)
+
+    print("\nPer-league (log-loss gain vs that league's own base rate; + = model better)")
+    print(f"{'league':<20}{'n':>5}{'over%':>7}{'pred%':>7}{'gain':>9}{'±95%':>8}  verdict")
+    for r in out.itertuples():
+        print(f"{r.league[:19]:<20}{r.n:>5}{r.actual:>6.1f}%{r.pred:>6.1f}%"
+              f"{r.gain:>+9.4f}{1.96 * r.se:>8.4f}  {r.verdict}")
+    print("\nverdict: EDGE = gain clearly above 0 | unclear = could be luck | "
+          "WORSE = clearly below 0 | too few = under --min-n matches")
+    weak = out[out["verdict"] == "WORSE"]["league"].tolist()
+    if weak:
+        print(f"Consider dropping (model worse than base rate): {', '.join(weak)}")
+    unclear = out[out["verdict"] == "unclear"]["league"].tolist()
+    if unclear:
+        print(f"No proven edge yet (re-check with more data): {', '.join(unclear)}")
+
+
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--start", default="2025-10-01")
     ap.add_argument("--refit-days", type=int, default=14)
+    ap.add_argument("--min-n", type=int, default=60, help="min matches for a per-league verdict")
     args = ap.parse_args()
 
     df = load_data()
@@ -81,5 +134,8 @@ if __name__ == "__main__":
                   f"(avg model prob {(p[mask].mean() if name=='HIGH Over' else 1-p[mask].mean())*100:.1f}%)")
         else:
             print(f"  {name:<11} n=0")
+
+    league_breakdown(df, res, p, y, start, args.min_n)
+
     print("\nNote: no historical odds are stored, so ROI can't be backtested here.\n"
-          "Use tracker.py results over 100+ bets to judge real profitability.")
+          "Use tracker.py results over 100+ bets to judge real profitability.\n")

@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#0a0a0b">
+    <title>HT Acca Tracker · PitchIQ Predictions</title>
+    <link rel="stylesheet" href="/static/theme.css?v=5">
+</head>
+<body>
+    <header class="topbar">
+        <div class="wrap">
+            <div class="brand">⏱ Pitch<b>IQ</b> Half-Time Tracker
+                <small>One lost leg loses the acca · odds are model-implied unless you entered yours</small>
+            </div>
+            <nav class="nav-inline">
+                <a href="/?tab=hacca">← HT Acca</a>
+                <a href="/">All Matches</a>
+                <a href="/acca-tracker">Goals Acca Tracker</a>
+                <a href="/corners-tracker">Corners Acca Tracker</a>
+            </nav>
+            <button class="burger" type="button" aria-label="Menu" onclick="document.body.classList.toggle('drawer-open')">☰</button>
+        </div>
+    </header>
+
+    <div class="drawer-bg" onclick="document.body.classList.toggle('drawer-open')"></div>
+    <aside class="drawer" aria-label="Menu">
+        <button class="x" type="button" onclick="document.body.classList.toggle('drawer-open')" aria-label="Close">×</button>
+        <h3>Quick Links</h3>
+        <a href="/?tab=hacca">← HT Acca</a>
+        <a href="/?tab=ht">⏱ HT O/U 1.5</a>
+        <a href="/">📅 All Matches</a>
+        <a href="/acca-tracker">🎯 Goals Acca Tracker</a>
+        <a href="/corners-tracker">🚩 Corners Acca Tracker</a>
+    </aside>
+
+    <main class="wrap">
+        <div class="pill-title" style="margin-top:18px;"><span>Performance</span></div>
+        <div class="stats">
+            <div class="stat"><div class="label">Settled</div><div class="value">{{ s.settled }}</div></div>
+            <div class="stat"><div class="label">Won / Lost</div><div class="value">{{ s.wins }} / {{ s.losses }}</div></div>
+            <div class="stat"><div class="label">Hit rate</div><div class="value">{{ s.hit_rate }}%</div></div>
+            <div class="stat"><div class="label">Model expected</div><div class="value">{{ s.expected_hit }}%</div></div>
+            <div class="stat"><div class="label">Avg model odds</div><div class="value">{{ s.avg_odds }}</div></div>
+            <div class="stat"><div class="label">Pending</div><div class="value">{{ s.pending }}</div></div>
+            <div class="stat"><div class="label">Profit (your odds)</div>
+                <div class="value {{ 'pos' if s.bk_pnl > 0 else ('neg' if s.bk_pnl < 0 else '') }}">{{ '%+.2f'|format(s.bk_pnl) }}u</div></div>
+            <div class="stat"><div class="label">ROI (your odds)</div>
+                <div class="value {{ 'pos' if s.bk_roi > 0 else ('neg' if s.bk_roi < 0 else '') }}">{{ '%+.1f'|format(s.bk_roi) }}%</div></div>
+        </div>
+        <div class="hint" style="margin-top:8px;">
+            Profit and ROI count only accas where you entered real bookmaker odds ({{ s.bk_n }} so far).
+            "Model expected" is the average win chance the model gave your accas: if the hit rate stays well
+            below it over 30+ accas, the half-time model is overconfident on combinations.
+        </div>
+
+        {% macro acca_card(a) %}
+            {% set res = a.result or 'pending' %}
+            <div class="acard {{ a.result }}">
+                <div class="card-head">
+                    <span class="when">{{ a.date }} · {{ a.n_legs }} legs · @ {{ a.odds }}
+                        <span class="meta">({{ 'your odds' if a.odds_source == 'bookmaker' else 'model odds' }})</span></span>
+                    <span class="chip {{ res }}">{{ res|upper }}</span>
+                </div>
+                {% for l in a.legs %}
+                    <div class="leg">
+                        <div style="display:flex;justify-content:space-between;gap:8px;">
+                            <div>
+                                {% if l.result == 'win' %}✅{% elif l.result == 'loss' %}❌{% else %}⏳{% endif %}
+                                <span style="color:var(--link);font-weight:700;">{{ l.fixture }}</span>
+                                <div class="meta">{{ l.league }} · {{ l.kickoff|eat_full }} EAT{% if l.score %} · final {{ l.score }}{% endif %}</div>
+                            </div>
+                            <div style="text-align:right;white-space:nowrap;">
+                                <b class="under">{{ l.pick }}</b>
+                                <div class="meta">model odds {{ l.odds }} · {{ (l.prob*100)|round(0)|int }}%</div>
+                            </div>
+                        </div>
+                    </div>
+                {% endfor %}
+                <div class="acca-sum" style="align-items:center;">
+                    <span>Stake {{ a.stake }}u · model {{ (a.model_prob|float*100)|round(1) }}%
+                        {% if a.pnl != '' %} · P/L
+                            <b class="{{ 'pos' if a.pnl|float > 0 else ('neg' if a.pnl|float < 0 else '') }}">{{ '%+.2f'|format(a.pnl|float) }}u</b>
+                        {% elif a.result in ['win', 'loss'] %}<span class="meta"> · no P/L (model odds)</span>{% endif %}
+                        {% if a.notes %}<span class="meta"> · {{ a.notes }}</span>{% endif %}
+                    </span>
+                    {% if not a.result %}
+                        <form method="POST" action="/hacca/void/{{ a.acca_id }}"
+                              onsubmit="return confirm('Void this acca (stake returned)?');">
+                            <button class="btn-sm" type="submit">Void</button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+        {% endmacro %}
+
+        <div class="pill-title" style="margin-top:22px;"><span>Pending ({{ pending|length }})</span></div>
+        {% if pending %}
+            <div class="agrid">{% for a in pending %}{{ acca_card(a) }}{% endfor %}</div>
+        {% else %}
+            <div class="empty">No pending half-time accas. They log themselves, or log one from the HT Acca tab.</div>
+        {% endif %}
+
+        <div class="pill-title" style="margin-top:22px;"><span>Settled ({{ settled|length }})</span></div>
+        {% if settled %}
+            <div class="agrid">{% for a in settled %}{{ acca_card(a) }}{% endfor %}</div>
+        {% else %}
+            <div class="empty">Nothing settled yet. Results are checked every 15 minutes while the app is running and online.</div>
+        {% endif %}
+
+        <div class="foot">Predictions are model probabilities, not guarantees. Bet responsibly (18+).</div>
+    </main>
+</body>
+</html>
