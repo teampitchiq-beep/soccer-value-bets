@@ -28,6 +28,7 @@ from datetime import datetime, timezone
 import pandas as pd
 
 import config
+from acca_shared import exclude_used
 from acca import _now_utc, _tz, local_today
 
 MIN_ODDS     = getattr(config, "HACCA_MIN_ODDS", getattr(config, "ACCA_MIN_ODDS", 2.0))
@@ -37,6 +38,7 @@ MIN_LEGS     = getattr(config, "HACCA_MIN_LEGS", getattr(config, "ACCA_MIN_LEGS"
 MIN_LEG_PROB = getattr(config, "HACCA_MIN_LEG_PROB", getattr(config, "ACCA_MIN_LEG_PROB", 0.58))
 MIN_LEG_ODDS = getattr(config, "HACCA_MIN_LEG_ODDS", 1.0)
 POOL         = getattr(config, "HACCA_POOL", getattr(config, "ACCA_POOL", 12))
+ONE_PER_DAY  = getattr(config, "HACCA_ONE_PER_DAY", getattr(config, "ACCA_ONE_PER_DAY", True))
 UNDER_ONLY   = getattr(config, "HACCA_UNDER_ONLY", True)
 
 EXPIRE_HOURS, CHECK_EVERY_S, FINISH_AFTER_MIN = 48, 300, 100
@@ -117,7 +119,7 @@ def _pick_combo(pool):
 
 def build_haccas(rows, only_date=None):
     by_date = {}
-    for c in _candidates(rows, _now_utc()):
+    for c in exclude_used(_candidates(rows, _now_utc()), STATE_JSON):
         if only_date and c["date"] != only_date:
             continue
         by_date.setdefault(c["date"], []).append(c)
@@ -242,6 +244,12 @@ def current_hacca(rows):
                 "logged": is_logged(s["acca"]["id"]), "reason": ""}
 
     today = local_today()
+    # One acca per day: once today's acca has been WON or LOST, no replacement until tomorrow.
+    # (Skipping / voiding an acca still frees the slot.)  Set ONE_PER_DAY = False in config to disable.
+    if ONE_PER_DAY and s and s.get("graded") and s.get("result") in ("win", "loss") \
+            and (s.get("acca") or {}).get("date") == today:
+        return {"acca": None, "status": "none", "prev": s, "logged": False,
+                "reason": f"Today's acca is already settled ({s['result']}). The next one is generated tomorrow."}
     built = build_haccas(rows, only_date=today)
     if built:
         _save_state({"acca": built[0], "created_at": _now_utc().isoformat(),

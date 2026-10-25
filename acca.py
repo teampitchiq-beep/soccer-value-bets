@@ -5,7 +5,8 @@
 Rules
   * Only TODAY's matches are used (never future dates). "Today" is your local date.
   * Over 2.5 legs only (set ACCA_OVER_ONLY = False to allow Under).
-  * A new acca is generated only when the previous one has been GRADED
+  * A new acca is generated only when the previous one has been GRADED, and never
+    twice in one day once an acca was won or lost (ONE_PER_DAY)
     (won / lost / void). Until then the same acca stays on screen, frozen.
   * Selection: candidates ranked by model probability (highest first). Try
     2-leg combinations, then 3 legs, in rank order: (1st+2nd), (1st+3rd) ...
@@ -34,6 +35,7 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 
 import config
+from acca_shared import exclude_used
 
 MIN_ODDS     = getattr(config, "ACCA_MIN_ODDS", 2.0)
 MAX_ODDS     = getattr(config, "ACCA_MAX_ODDS", 3.0)
@@ -43,6 +45,7 @@ OVER_ONLY    = getattr(config, "ACCA_OVER_ONLY", True)
 MIN_LEG_PROB = getattr(config, "ACCA_MIN_LEG_PROB", 0.58)
 MIN_LEG_ODDS = getattr(config, "ACCA_MIN_LEG_ODDS", 1.15)
 POOL         = getattr(config, "ACCA_POOL", 12)
+ONE_PER_DAY  = getattr(config, "ACCA_ONE_PER_DAY", True)
 UTC_OFFSET   = getattr(config, "ACCA_UTC_OFFSET_HOURS", None)
 
 EXPIRE_HOURS  = 48        # void an ungraded acca this long after its last kickoff
@@ -122,7 +125,7 @@ def _pick_combo(pool):
 def build_accas(matches, only_date=None):
     """One acca per local date where one can be built; only_date restricts to a single day."""
     by_date = {}
-    for c in _candidates(matches, _now_utc()):
+    for c in exclude_used(_candidates(matches, _now_utc()), STATE_JSON):
         if only_date and c["date"] != only_date:
             continue
         by_date.setdefault(c["date"], []).append(c)
@@ -263,6 +266,12 @@ def current_acca(matches):
                 "logged": is_logged(s["acca"]["id"]), "reason": ""}
 
     today = local_today()
+    # One acca per day: once today's acca has been WON or LOST, no replacement until tomorrow.
+    # (Skipping / voiding an acca still frees the slot.)  Set ONE_PER_DAY = False in config to disable.
+    if ONE_PER_DAY and s and s.get("graded") and s.get("result") in ("win", "loss") \
+            and (s.get("acca") or {}).get("date") == today:
+        return {"acca": None, "status": "none", "prev": s, "logged": False,
+                "reason": f"Today's acca is already settled ({s['result']}). The next one is generated tomorrow."}
     built = build_accas(matches, only_date=today)
     if built:
         new = built[0]

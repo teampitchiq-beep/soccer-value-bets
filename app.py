@@ -200,6 +200,16 @@ def load_dataset():
     return df
 
 
+def _newest_match_date():
+    """Date of the newest finished match on disk, e.g. '2026-10-25' (or 'unknown')."""
+    try:
+        newest = pd.to_datetime(pd.read_csv(MATCHES_CSV, usecols=["date"])["date"],
+                                errors="coerce", utc=True).max()
+        return newest.strftime("%Y-%m-%d")
+    except Exception:
+        return "unknown"
+
+
 def _catchup_days():
     """Days to look back for finished matches: since the newest match on disk (3..30)."""
     try:
@@ -241,7 +251,8 @@ def run_daily_pipeline(force_no_refresh=False):
             else:
                 save_fetch_time()
     else:
-        print(f"✓ Data on disk (last full fetch: {last_fetch_age_str()})")
+        print(f"✓ Data on disk — newest match: {_newest_match_date()} "
+              f"(updated daily; last full download: {last_fetch_age_str()})")
         
         # Even if data is "fresh" (<24h), do a quick fetch to catch 
         # yesterday's matches that finished since the last run.
@@ -604,7 +615,7 @@ def auto_log_loop():
 def start_background_threads():
     t4 = threading.Thread(target=auto_log_loop, daemon=True)
     t4.start()
-    print("✓ Auto-log running (goals + corners accas)" if AUTO_LOG_ACCAS
+    print("✓ Auto-log running (goals, corners, half-time + BTTS accas)" if AUTO_LOG_ACCAS
           else "✓ Auto-log is OFF (log accas by hand)")
 
     t3 = threading.Thread(target=corners_update_loop, daemon=True)
@@ -1232,7 +1243,8 @@ def cmd_status():
           f"{'exists' if os.path.exists('bets_log.csv') else 'missing'}")
     print(f"  predictions_history  : "
           f"{'exists' if os.path.exists('data/predictions_history.csv') else 'missing'}")
-    print(f"  last fetch           : {last_fetch_age_str()}")
+    print(f"  last full download   : {last_fetch_age_str()}")
+    print(f"  newest match on disk : {_newest_match_date()}")
 
     if os.path.exists("bets_log.csv"):
         try:

@@ -1040,11 +1040,59 @@
                                 </span></div>
                         {% endmacro %}
                         <div class="result">
-                            <div class="card-head">
+                            <div class="card-head" style="flex-wrap:wrap;gap:6px;">
                                 <span class="tag">{{ result.league_name }}</span>
-                                <span class="badge {{ result.confidence }}">{{ result.confidence }} CONFIDENCE</span>
+                                {% if result.ranked %}
+                                    <span class="badge {{ result.ranked[0].tier or result.confidence }}">⭐ {{ result.ranked[0].pick }} · {{ result.ranked[0].prob }}%</span>
+                                {% else %}
+                                    <span class="badge {{ result.confidence }}">{{ result.confidence }} CONFIDENCE</span>
+                                {% endif %}
                             </div>
                             <h2>{{ result.home_team }} vs {{ result.away_team }}</h2>
+                            {% if result.ranked %}
+                                {% set top = result.ranked[0] %}
+                                <h2 style="margin-top:6px;">⭐ Best selection</h2>
+                                <div class="card gold" style="margin-top:8px;">
+                                    <div class="card-head">
+                                        <span class="tag">{{ top.market }}</span>
+                                        {% if top.tier %}<span class="tier {{ top.tier }}">{{ top.tier }}</span>{% endif %}
+                                    </div>
+                                    <div style="font-size:1.25rem;font-weight:800;margin:6px 0;">{{ top.pick }}</div>
+                                    <div class="acca-sum">
+                                        <span>Probability <b>{{ top.prob }}%</b></span>
+                                        <span>Real odds <b>{{ ("%.2f"|format(top.real)) if top.real else "n/a" }}</b></span>
+                                        <span>Model odds <b>{{ top.model }}</b></span>
+                                    </div>
+                                    {% if top.ev is not none %}
+                                        <div class="hint" style="margin-top:8px;">
+                                            Value at the real price:
+                                            <b class="{{ 'pos' if top.ev > 0 else 'neg' }}">{{ '%+.1f'|format(top.ev*100) }}%</b>
+                                            {% if top.ev <= 0 %}(the bookmaker price is shorter than the model's fair price){% endif %}
+                                        </div>
+                                    {% endif %}
+                                </div>
+
+                                <div class="hint" style="margin-top:10px;">All markets, highest probability first:</div>
+                                {% for i in result.ranked %}
+                                    <div class="row">
+                                        <span class="label">{{ loop.index }}. {{ i.pick }}
+                                            <small style="display:block;color:var(--muted);">{{ i.market }}</small></span>
+                                        <span class="value" style="font-size:.9rem;text-align:right;">
+                                            {{ i.prob }}%<br>
+                                            Real {{ ("%.2f"|format(i.real)) if i.real else "n/a" }} · Model {{ i.model }}
+                                            {% if i.ev is not none %}<br><b class="{{ 'pos' if i.ev > 0 else 'neg' }}">EV {{ '%+.1f'|format(i.ev*100) }}%</b>{% endif %}
+                                        </span>
+                                    </div>
+                                {% endfor %}
+                                <div class="hint" style="margin-top:6px;">
+                                    Ranked by the model's probability for each pick. Markets differ in how reliable they are
+                                    (backtests: BTTS and half-time are well calibrated; 58% picks are close to coin-flips),
+                                    so check the real price (EV) before acting.
+                                </div>
+                            {% endif %}
+
+                            <h2 style="margin-top:18px;">Over / Under 2.5 · Goals
+                                <span class="badge {{ result.confidence }}" style="font-size:.6rem;vertical-align:middle;">{{ result.confidence }} CONFIDENCE</span></h2>
                             <div class="row"><span class="label">Expected goals (xG)</span>
                                 <span class="value">{{ result.lambda_home }} – {{ result.lambda_away }}</span></div>
                             <div class="row"><span class="label">Over 2.5</span>
@@ -1110,48 +1158,6 @@
                                 {% else %}
                                     <div class="hint">{{ result.corners.message }}</div>
                                 {% endif %}
-                            {% endif %}
-
-                            {% if result.ranked %}
-                                {% set top = result.ranked[0] %}
-                                <h2 style="margin-top:16px;">⭐ Best selection</h2>
-                                <div class="card gold" style="margin-top:8px;">
-                                    <div class="card-head">
-                                        <span class="tag">{{ top.market }}</span>
-                                        {% if top.tier %}<span class="tier {{ top.tier }}">{{ top.tier }}</span>{% endif %}
-                                    </div>
-                                    <div style="font-size:1.25rem;font-weight:800;margin:6px 0;">{{ top.pick }}</div>
-                                    <div class="acca-sum">
-                                        <span>Probability <b>{{ top.prob }}%</b></span>
-                                        <span>Real odds <b>{{ ("%.2f"|format(top.real)) if top.real else "n/a" }}</b></span>
-                                        <span>Model odds <b>{{ top.model }}</b></span>
-                                    </div>
-                                    {% if top.ev is not none %}
-                                        <div class="hint" style="margin-top:8px;">
-                                            Value at the real price:
-                                            <b class="{{ 'pos' if top.ev > 0 else 'neg' }}">{{ '%+.1f'|format(top.ev*100) }}%</b>
-                                            {% if top.ev <= 0 %}(the bookmaker price is shorter than the model's fair price){% endif %}
-                                        </div>
-                                    {% endif %}
-                                </div>
-
-                                <div class="hint" style="margin-top:10px;">All markets, highest probability first:</div>
-                                {% for i in result.ranked %}
-                                    <div class="row">
-                                        <span class="label">{{ loop.index }}. {{ i.pick }}
-                                            <small style="display:block;color:var(--muted);">{{ i.market }}</small></span>
-                                        <span class="value" style="font-size:.9rem;text-align:right;">
-                                            {{ i.prob }}%<br>
-                                            Real {{ ("%.2f"|format(i.real)) if i.real else "n/a" }} · Model {{ i.model }}
-                                            {% if i.ev is not none %}<br><b class="{{ 'pos' if i.ev > 0 else 'neg' }}">EV {{ '%+.1f'|format(i.ev*100) }}%</b>{% endif %}
-                                        </span>
-                                    </div>
-                                {% endfor %}
-                                <div class="hint" style="margin-top:6px;">
-                                    Ranked by the model's probability for each pick. Markets differ in how reliable they are
-                                    (backtests: BTTS and half-time are well calibrated; 58% picks are close to coin-flips),
-                                    so check the real price (EV) before acting.
-                                </div>
                             {% endif %}
 
                             <div class="hint" style="margin-top:12px;">

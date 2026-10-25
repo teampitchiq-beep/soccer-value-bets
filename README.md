@@ -161,7 +161,8 @@ AUTO_LOG_STAKE = 1.0     # units staked on each auto-logged acca
 
 - One acca per day, today's matches only, Over legs only
 - 2–3 legs, combined odds 2.0–3.0, each leg at least 58 % model probability
-- A new acca is generated only after the previous one is graded (won / lost / void)
+- **No fixture appears in two accas** (goals, corners, half-time, BTTS) on the same day: a new acca skips fixtures already used by another market's acca. A skipped / voided acca frees its fixtures. Turn off with `ACCA_UNIQUE_FIXTURES = False` in `config.py`
+- A new acca is generated only after the previous one is graded (won / lost / void), and **never twice in one day once an acca was won or lost**. Skipping or voiding one (e.g. a postponed match) still frees the slot. Turn this off with `ACCA_ONE_PER_DAY = False` in `config.py` (or per market: `CACCA_`, `HACCA_`, `BACCA_ONE_PER_DAY`)
 - An ungraded acca is voided automatically 48 h after its last kickoff
 
 Override in `config.py`: `ACCA_MIN_ODDS`, `ACCA_MAX_ODDS`, `ACCA_MAX_LEGS`, `ACCA_MIN_LEG_PROB`
@@ -208,6 +209,7 @@ over_model/
 ├── model.py                # Goals model (ridge Poisson)
 ├── scan.py                 # Upcoming fixtures + picks + odds
 ├── acca.py                 # Goals acca: build, freeze, grade, log
+├── acca_shared.py          # Keeps the four accas from sharing fixtures
 ├── corners_data.py         # Corner counts fetcher
 ├── corners_model.py        # Corners model (Negative Binomial)
 ├── corners_backtest.py     # Corners backtest / tuning
