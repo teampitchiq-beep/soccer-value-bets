@@ -210,7 +210,7 @@ body.drawer-open .drawer-bg { display: block; }
   .mrow.open .mdetail { grid-template-columns: repeat(4, 1fr); }
 }
 
-/* ---------- cards (value bets, accas, results, single) ---------- */
+/* ---------- cards (results, single match) ---------- */
 .cards { display: grid; gap: 12px; grid-template-columns: 1fr; }
 @media (min-width: 640px)  { .cards { grid-template-columns: repeat(2, 1fr); } }
 @media (min-width: 1280px) { .cards.c3 { grid-template-columns: repeat(3, 1fr); } }
@@ -232,7 +232,6 @@ body.drawer-open .drawer-bg { display: block; }
 .stat-row { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; border-top: 1px solid #1f1f23; font-size: .88rem; }
 .stat-row .k { color: var(--muted); }
 .stat-row .v { font-weight: 700; text-align: right; }
-.log-form { margin-top: 10px; }
 .log-row { display: flex; gap: 8px; align-items: center; }
 .log-row input[type=number] { width: 84px; }
 .log-row button, button.primary {
@@ -245,12 +244,8 @@ input[type=text], input[type=number], select {
 }
 input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px; }
 
-/* acca legs */
-.leg { padding: 10px 0; border-top: 1px solid #1f1f23; }
-.leg .teams { font-size: .98rem; margin-bottom: 2px; }
-.leg-row { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: .88rem; }
-.acca-sum { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 6px 14px; flex-wrap: wrap; font-size: .88rem; }
-.acca-sum b { color: var(--gold); font-size: 1.05rem; }
+.sel-sum { margin-top: 8px; padding-top: 10px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 6px 14px; flex-wrap: wrap; font-size: .88rem; }
+.sel-sum b { color: var(--gold); font-size: 1.05rem; }
 
 /* ---------- results ---------- */
 .range { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; font-size: .88rem; color: var(--muted); }
@@ -283,7 +278,6 @@ input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px;
 .verdict.pend { background: #1e293b; color: #93c5fd; border: 1px solid #334155; }
 .rc-score { font-size: 1.7rem; font-weight: 800; line-height: 1.1; }
 .rc-meta { font-size: .78rem; margin-top: 2px; }
-.rc-bet { margin-top: 8px; font-size: .76rem; color: var(--muted); display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 
 /* ---------- single match ---------- */
 .single { max-width: 620px; margin: 0 auto; }
@@ -298,19 +292,6 @@ input:focus, select:focus { outline: 2px solid var(--gold); outline-offset: 1px;
 
 .foot { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); text-align: center; font-size: .76rem; color: var(--faint); }
 
-/* ---------- acca tracker page ---------- */
-.stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin: 6px 0; }
-@media (min-width: 640px)  { .stats { grid-template-columns: repeat(4, 1fr); } }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
-.stat .label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-.stat .value { font-size: 1.3rem; font-weight: 800; margin-top: 2px; }
-.pos { color: var(--win); } .neg { color: var(--lose); }
-.acard { background: var(--card); border: 1px solid var(--line); border-left: 4px solid #52525b; border-radius: 10px; padding: 12px 14px; }
-.acard.win { border-left-color: var(--win); } .acard.loss { border-left-color: var(--lose); } .acard.void { border-left-color: #eab308; }
-.agrid { display: grid; gap: 10px; grid-template-columns: 1fr; }
-@media (min-width: 900px) { .agrid { grid-template-columns: repeat(2, 1fr); } }
-.chip { padding: 2px 9px; border-radius: 999px; font-size: .7rem; font-weight: 800; }
-.chip.win { background: #0f3d1f; color: #bbf7d0; } .chip.loss { background: #3f0d0d; color: #fecaca; }
-.chip.void { background: #3b2a06; color: #fde68a; } .chip.pending { background: #1e293b; color: #93c5fd; }
-.meta { font-size: .72rem; color: var(--faint); }
-.btn-sm { background: #1c1c20; color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; font-size: .78rem; }
+/* ---------- helpers ---------- */
+@media (min-width: 640px)  { .pos { color: var(--win); } .neg { color: var(--lose); }
+@media (min-width: 900px) { .meta { font-size: .72rem; color: var(--faint); }

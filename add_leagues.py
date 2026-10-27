@@ -9,6 +9,17 @@ Adds leagues to your project (config.py + downloaded history + xG).
 
 --add format is  ID:Name[:Country].  Find IDs with:  python fetch_data.py leagues <Country>
 
+Add by NAME (the script looks the IDs up for you, one API request):
+    python add_leagues.py --preset a              # batch A: Championship, Serie B, MLS, Liga MX, 2. Bundesliga
+    python add_leagues.py --preset b              # batch B: Belgian Pro League, Brasileirão Série B, Argentina,
+                                                  #          Saudi Pro League, Danish Superliga
+    python add_leagues.py --name "Serie B|Italy"  # any single league: "name|country"
+    python add_leagues.py --preset a --dry-run    # only show which IDs it found, change nothing
+
+Each batch downloads ~2,500-3,000 matches and fetches xG for each (1 API request per match), so run
+batch A and batch B on DIFFERENT days to stay inside the free daily quota (resets 00:00 UTC). The xG
+download is resumable: if the quota runs out, run the same command again after the reset.
+
 What it does:
   1. (no-argument mode) looks the Europa/Conference leagues up in the API list
   2. Adds each league to TOP_10_LEAGUES and LEAGUE_NAMES in config.py (backup: config.py.bak)
@@ -30,6 +41,66 @@ WANTED = {
     "conference": {"label": "Conference League", "must": "conference league", "not": ("women",)},
 }
 EUROPE_WORDS = ("europe", "world", "international", "uefa", "")
+
+# Chosen from Bzzoiro's coverage table: "Full" tier = most played matches carry xG AND shot maps
+# (Argentina is "Advanced": no xG, the model falls back to actual goals for those matches).
+# (search text, country, name shown in the app)
+PRESETS = {
+    "a": [("Championship", "England", "Championship"),
+          ("Serie B", "Italy", "Serie B"),
+          ("MLS", "USA", "MLS"),
+          ("Liga MX", "Mexico", "Liga MX"),
+          ("2. Bundesliga", "Germany", "2. Bundesliga")],
+    "b": [("Pro League", "Belgium", "Belgian Pro League"),
+          ("Serie B", "Brazil", "Brasileirão Série B"),
+          ("Liga Profesional", "Argentina", "Liga Profesional"),
+          ("Saudi Pro League", "Saudi Arabia", "Saudi Pro League"),
+          ("Superliga", "Denmark", "Danish Superliga")],
+}
+BAD_WORDS = ("women", "femenin", "feminin", " w ", "u21", "u20", "u19", "u18", "youth", "reserve", "cup", "copa", "pokal")
+
+
+def _norm(text):
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9 ]+", " ", t).strip()
+
+
+def resolve_names(specs, leagues):
+    """specs: [(search, country, display)]. Returns [(id, display, country)]; asks only if ambiguous."""
+    out = []
+    for search, country, display in specs:
+        want, ctry = _norm(search), _norm(country)
+        pool = [lg for lg in leagues
+                if ctry in (_norm(lg.get("country", "")), _norm(lg.get("country", "")).replace("united states", "usa"))
+                or (ctry == "usa" and _norm(lg.get("country", "")) in ("usa", "united states", "us"))]
+        if display == "Brasileirão Série B":
+            pool = [lg for lg in pool if "b" in _norm(lg.get("name", "")).split()]
+        elif display == "Serie B":
+            pool = [lg for lg in pool if "b" in _norm(lg.get("name", "")).split()]
+        cands = [lg for lg in pool
+                 if want in _norm(lg.get("name", ""))
+                 and not any(b in f" {_norm(lg.get('name', ''))} " for b in BAD_WORDS)]
+        exact = [lg for lg in cands if _norm(lg.get("name", "")) == want]
+        cands = exact or cands
+        if not cands:
+            print(f"  ! Could not find '{search}' ({country}) in the API list. "
+                  f"Try:  python fetch_data.py leagues \"{country}\"  then use --add ID:Name:Country")
+            continue
+        if len(cands) > 1:
+            print(f"\nSeveral matches for {display} ({country}):")
+            for i, c in enumerate(cands, 1):
+                print(f"  {i}. id={c.get('id')}  name={c.get('name')!r}")
+            pick = input(f"Which one? [1-{len(cands)}, Enter = skip] ").strip()
+            if not (pick.isdigit() and 1 <= int(pick) <= len(cands)):
+                print("  skipped")
+                continue
+            c = cands[int(pick) - 1]
+        else:
+            c = cands[0]
+        print(f"  {display}: id={c['id']}  ({c.get('name')} / {c.get('country')})")
+        out.append((int(c["id"]), display, country))
+    return out
 
 
 def find_candidates(leagues, key):
@@ -132,12 +203,38 @@ def main():
     ap.add_argument("--europa", type=int, help="Europa League id (skips the lookup)")
     ap.add_argument("--conference", type=int, help="Conference League id (skips the lookup)")
     ap.add_argument("--no-fetch", action="store_true", help="only edit config.py")
+    ap.add_argument("--preset", choices=sorted(PRESETS), action="append", default=[],
+                    help="add a ready-made batch of 5 leagues by name (a or b)")
+    ap.add_argument("--name", action="append", default=[], metavar="NAME|COUNTRY",
+                    help='add a league by name, e.g. --name "Serie B|Italy" (repeatable)')
+    ap.add_argument("--dry-run", action="store_true", help="only show the IDs found, change nothing")
     args = ap.parse_args()
 
     entries = [parse_add(t) for t in args.add]
 
+    by_name = [spec for key in args.preset for spec in PRESETS[key]]
+    for text in args.name:
+        parts = [p.strip() for p in text.split("|")]
+        if len(parts) != 2 or not all(parts):
+            raise SystemExit(f'Bad --name value {text!r}. Use "NAME|COUNTRY", e.g. "Serie B|Italy"')
+        by_name.append((parts[0], parts[1], parts[0]))
+    if by_name:
+        from fetch_data import get_leagues
+        print("Looking up league IDs via the API (1-2 requests) ...")
+        leagues = get_leagues(None)
+        if not leagues:
+            print("Could not fetch the league list (offline or quota used up?). Retry later.")
+            return
+        entries += resolve_names(by_name, leagues)
+        if args.dry_run:
+            print("\nDry run: nothing changed.")
+            return
+        if not entries:
+            print("Nothing resolved.")
+            return
+
     explicit_europe = bool(args.europa or args.conference)
-    if explicit_europe or not args.add:       # no --add at all => original Europa/Conference mode
+    if explicit_europe or not (args.add or by_name):   # nothing given at all => original Europa/Conference mode
         chosen = {}
         if args.europa:
             chosen["europa"] = args.europa

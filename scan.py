@@ -217,7 +217,7 @@ def get_todays_matches(days=2, min_apps=DEFAULT_MIN_APPS):
         over_o = odds.get("over_25")
         under_o = odds.get("under_25")
 
-        # The model's preferred side and the bookmaker price for it (used by the acca builder)
+        # The model's preferred side and the bookmaker price for it
         book_odds = None
         model_pick = None
         model_prob = None

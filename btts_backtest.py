@@ -7,7 +7,7 @@ Each match is predicted using ONLY earlier matches. Needs no extra data (uses fu
     python btts_backtest.py --start 2026-01-01 --refit-days 14
 
 Prints log loss vs the plain base rate, the best BTTS_SCALE / BTTS_CAL_A / BTTS_CAL_B for config.py,
-a calibration table, and the hit rate of BTTS Yes picks by probability (what the BTTS acca uses).
+a calibration table, and the hit rate of BTTS Yes picks by probability.
 """
 import argparse
 
@@ -73,7 +73,7 @@ def main():
     for b, g in pd.DataFrame({"p": p, "y": y}).groupby(cut, observed=True):
         print(f"  {str(b):<14} n={len(g):<5} predicted {g['p'].mean()*100:5.1f}%  actual {g['y'].mean()*100:5.1f}%")
 
-    print("\nBTTS YES picks by probability (what the BTTS acca uses):")
+    print("\nBTTS YES picks by probability:")
     for t in (0.50, 0.55, 0.58, 0.60, 0.65):
         m = p >= t
         if m.any():

@@ -14,7 +14,10 @@
     'Ligue 1': 'L1', 'Champions League': 'UCL', 'Europa League': 'UEL',
     'Conference League': 'UECL', 'Eredivisie': 'NED', 'Liga Portugal': 'POR',
     'Süper Lig': 'TUR', 'Brasileirão Série A': 'BRA', 'Eliteserien': 'NOR',
-    'Swiss Super League': 'SUI'
+    'Swiss Super League': 'SUI', 'Championship': 'EFL', 'Serie B': 'SB', 'MLS': 'MLS',
+    'Liga MX': 'MEX', '2. Bundesliga': 'BL2', 'Belgian Pro League': 'BEL',
+    'Brasileirão Série B': 'BRB', 'Liga Profesional': 'ARG', 'Saudi Pro League': 'KSA',
+    'Danish Superliga': 'DEN'
 } %}
 
     <!-- ================= TOP BAR ================= -->
@@ -24,9 +27,6 @@
                 <small>Ridge Poisson · xG-weighted · Bzzoiro API</small>
             </div>
             <nav class="nav-inline">
-                <a href="/tracker">📊 Bet Tracker</a>
-                <a href="/acca-tracker">🎯 Acca Tracker</a>
-                <a href="/corners-tracker">🚩 Corners Tracker</a>
                 <a href="/?refresh=1">↻ Refresh</a>
             </nav>
             <button class="burger" type="button" aria-label="Menu" onclick="toggleDrawer()">☰</button>
@@ -39,20 +39,11 @@
         <button class="x" type="button" onclick="toggleDrawer()" aria-label="Close">×</button>
         <h3>Quick Links</h3>
         <button class="dl" type="button" onclick="goTab('matches')">📅 All Matches</button>
-        <button class="dl" type="button" onclick="goTab('acca')">🎯 2-Odds Acca</button>
         <button class="dl" type="button" onclick="goTab('corners')">🚩 Corners</button>
-        <button class="dl" type="button" onclick="goTab('cacca')">🚩 Corners Acca</button>
         <button class="dl" type="button" onclick="goTab('ht')">⏱ HT O/U 1.5</button>
-        <button class="dl" type="button" onclick="goTab('hacca')">⏱ HT Acca</button>
         <button class="dl" type="button" onclick="goTab('btts')">⚽ BTTS</button>
-        <button class="dl" type="button" onclick="goTab('bacca')">⚽ BTTS Acca</button>
         <button class="dl" type="button" onclick="goTab('results')">📋 Results</button>
         <button class="dl" type="button" onclick="goTab('single')">🔍 Single Match</button>
-        <a href="/tracker">📊 Bet Tracker</a>
-        <a href="/acca-tracker">🎯 Acca Tracker</a>
-        <a href="/corners-tracker">🚩 Corners Acca Tracker</a>
-        <a href="/ht-tracker">⏱ HT Acca Tracker</a>
-        <a href="/btts-tracker">⚽ BTTS Acca Tracker</a>
         <a href="/?refresh=1">↻ Refresh matches</a>
     </aside>
 
@@ -61,26 +52,14 @@
             <button class="tab active" data-tab="matches" onclick="switchTab('matches', this)">
                 📅 All Matches <span class="badge-count">{{ all_matches|length }}</span>
             </button>
-            <button class="tab" data-tab="acca" onclick="switchTab('acca', this)">
-                🎯 2-Odds Acca <span class="badge-count">{{ accas|length }}</span>
-            </button>
             <button class="tab" data-tab="corners" onclick="switchTab('corners', this)">
                 🚩 Corners <span class="badge-count">{{ corner_rows|length }}</span>
-            </button>
-            <button class="tab" data-tab="cacca" onclick="switchTab('cacca', this)">
-                🚩 Corners Acca <span class="badge-count">{{ caccas|length }}</span>
             </button>
             <button class="tab" data-tab="ht" onclick="switchTab('ht', this)">
                 ⏱ HT O/U 1.5 <span class="badge-count">{{ ht_rows|length }}</span>
             </button>
-            <button class="tab" data-tab="hacca" onclick="switchTab('hacca', this)">
-                ⏱ HT Acca <span class="badge-count">{{ haccas|length }}</span>
-            </button>
             <button class="tab" data-tab="btts" onclick="switchTab('btts', this)">
                 ⚽ BTTS <span class="badge-count">{{ btts_rows|length }}</span>
-            </button>
-            <button class="tab" data-tab="bacca" onclick="switchTab('bacca', this)">
-                ⚽ BTTS Acca <span class="badge-count">{{ baccas|length }}</span>
             </button>
             <button class="tab" data-tab="results" onclick="switchTab('results', this)">
                 📋 Results <span class="badge-count">{{ results|length }}</span>
@@ -92,41 +71,6 @@
                 🔍 Single Match
             </button>
         </div>
-
-        {% set msg = request.args.get('msg') %}
-        {% if msg == 'acca_logged' %}
-            <div class="flash success">✓ Acca logged. View it on the <a href="/acca-tracker">Acca Tracker</a>.</div>
-        {% elif msg == 'acca_duplicate' %}
-            <div class="flash warning">⚠ This acca is already in your log.</div>
-        {% elif msg == 'cacca_logged' %}
-            <div class="flash success">✓ Corners acca logged. View it on the <a href="/corners-tracker">Corners Tracker</a>.</div>
-        {% elif msg == 'cacca_duplicate' %}
-            <div class="flash warning">⚠ This corners acca is already in your log.</div>
-        {% elif msg == 'cacca_missing' %}
-            <div class="flash warning">⚠ That corners acca has changed — check the tab and log it again.</div>
-        {% elif msg == 'cacca_skipped' %}
-            <div class="flash success">✓ Corners acca skipped. A new one appears when today's matches allow it.</div>
-        {% elif msg == 'bacca_logged' %}
-            <div class="flash success">✓ BTTS acca logged. View it on the <a href="/btts-tracker">BTTS Tracker</a>.</div>
-        {% elif msg == 'bacca_duplicate' %}
-            <div class="flash warning">⚠ This BTTS acca is already in your log.</div>
-        {% elif msg == 'bacca_missing' %}
-            <div class="flash warning">⚠ That BTTS acca has changed — check the tab and log it again.</div>
-        {% elif msg == 'bacca_skipped' %}
-            <div class="flash success">✓ BTTS acca skipped. A new one appears when today's matches allow it.</div>
-        {% elif msg == 'hacca_logged' %}
-            <div class="flash success">✓ Half-time acca logged. View it on the <a href="/ht-tracker">HT Tracker</a>.</div>
-        {% elif msg == 'hacca_duplicate' %}
-            <div class="flash warning">⚠ This half-time acca is already in your log.</div>
-        {% elif msg == 'hacca_missing' %}
-            <div class="flash warning">⚠ That half-time acca has changed — check the tab and log it again.</div>
-        {% elif msg == 'hacca_skipped' %}
-            <div class="flash success">✓ Half-time acca skipped. A new one appears when today's matches allow it.</div>
-        {% elif msg == 'acca_skipped' %}
-            <div class="flash success">✓ Acca skipped. A new one appears when today's matches allow it.</div>
-        {% elif msg == 'acca_missing' %}
-            <div class="flash warning">⚠ That acca has changed (odds or fixtures moved) — check the tab and log it again.</div>
-        {% endif %}
 
         <!-- ================= ALL MATCHES ================= -->
         <section id="matches" class="panel active">
@@ -230,88 +174,6 @@
             {% endif %}
         </section>
 
-        <!-- ================= 2-ODDS ACCA ================= -->
-        <section id="acca" class="panel">
-            <div class="pill-title"><span>Today's 2-Odds Acca</span></div>
-            <div class="hint" style="margin:-6px 0 12px;">
-                {{ acca_rules }} ·
-                <a href="/acca-tracker">📊 Acca Tracker</a>
-            </div>
-
-            {% if accas %}
-                {% set a = accas[0] %}
-                {% set resolved = a.legs | selectattr('result') | list | length %}
-                <div class="cards">
-                    <div class="card gold">
-                        <div class="card-head">
-                            <span class="tag">{{ a.date }}</span>
-                            <span class="when">
-                                {% if acca_cur.status == 'pending' %}⏳ Pending grading · {{ resolved }}/{{ a.n_legs }} legs settled
-                                {% else %}✨ New · {{ a.n_legs }} legs · from {{ a.candidates }} candidates{% endif %}
-                            </span>
-                        </div>
-
-                        {% for l in a.legs %}
-                            <div class="leg">
-                                <div class="teams">
-                                    {% if l.result == 'win' %}✅{% elif l.result == 'loss' %}❌{% else %}⏳{% endif %}
-                                    {{ l.fixture }}
-                                </div>
-                                <div class="hint">{{ l.league }} · {{ l.kickoff|eat_full }} EAT{% if l.score %} · final {{ l.score }}{% endif %}</div>
-                                <div class="leg-row">
-                                    <b class="{{ 'over' if l.pick == 'Over 2.5' else 'under' }}">{{ l.pick }}</b>
-                                    <span>@ {{ l.odds }} · model {{ (l.prob*100)|round(1) }}%</span>
-                                </div>
-                            </div>
-                        {% endfor %}
-
-                        <div class="acca-sum">
-                            <span>Combined odds <b>{{ a.odds }}</b></span>
-                            <span>Model {{ (a.prob*100)|round(1) }}% · book {{ (100/a.odds)|round(1) }}%</span>
-                            <span>EV {{ '%+.1f'|format(a.ev*100) }}%</span>
-                        </div>
-
-                        {% if acca_cur.logged %}
-                            <div class="hint" style="margin-top:10px;">✓ Logged — grading happens automatically on the
-                                <a href="/acca-tracker">Acca Tracker</a>.</div>
-                        {% else %}
-                            <form method="POST" action="/log_acca" class="log-form">
-                                <input type="hidden" name="acca_id" value="{{ a.id }}">
-                                <div class="log-row">
-                                    <input type="number" name="stake" value="1.0" min="0.1" step="0.1" aria-label="Stake in units">
-                                    <span class="hint">units</span>
-                                    <button type="submit">✓ Log This Acca</button>
-                                </div>
-                            </form>
-                        {% endif %}
-
-                        <form method="POST" action="/acca/skip" style="margin-top:10px;"
-                              onsubmit="return confirm('Skip this acca? It will be voided and a new one can be generated.');">
-                            <button class="btn-sm" type="submit">Skip this acca</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="hint" style="margin-top:12px;">
-                    One acca per day. It stays fixed until it is graded; a new one is generated only after that.
-                    Model chance assumes independent matches and backtests show mild overconfidence at 60–70%,
-                    so treat the combined figure as optimistic.
-                </div>
-            {% else %}
-                <div class="empty">{{ acca_cur.reason or "No acca available right now." }}<br>
-                    <span class="hint">It needs 2+ Over picks today with bookmaker odds that combine into range.</span><br>
-                    <a href="/?refresh=1&tab=acca">↻ Refresh</a> closer to kickoff.</div>
-            {% endif %}
-
-            {% if acca_cur.prev %}
-                {% set pv = acca_cur.prev %}
-                <div class="hint" style="margin-top:14px;text-align:center;">
-                    Previous acca ({{ pv.acca.date }}, {{ pv.acca.n_legs }} legs @ {{ pv.acca.odds }}):
-                    <b class="{{ 'pos' if pv.result == 'win' else ('neg' if pv.result == 'loss' else '') }}">{{ pv.result|upper }}</b>
-                    {% if pv.note %}· {{ pv.note }}{% endif %}
-                </div>
-            {% endif %}
-        </section>
-
         <!-- ================= CORNERS ================= -->
         <section id="corners" class="panel">
             <div class="pill-title"><span>Corners · Over / Under {{ corner_info.line }}</span></div>
@@ -319,8 +181,7 @@
             {% if corner_info.ready %}
                 <div class="hint" style="margin:-6px 0 12px;">
                     Expected corners from {{ corner_info.n_matches }} matches with corner data
-                    (average {{ corner_info.avg_total|round(1) }} per match, {{ (corner_info.base_over*100)|round(0)|int }}% went over {{ corner_info.line }}) ·
-                    <a href="/corners-tracker">📊 Corners Acca Tracker</a>
+                    (average {{ corner_info.avg_total|round(1) }} per match, {{ (corner_info.base_over*100)|round(0)|int }}% went over {{ corner_info.line }})
                 </div>
 
                 {% if corner_rows %}
@@ -391,93 +252,6 @@
             {% endif %}
         </section>
 
-        <!-- ================= CORNERS ACCA ================= -->
-        <section id="cacca" class="panel">
-            <div class="pill-title"><span>Today's Corners Acca</span></div>
-            <div class="hint" style="margin:-6px 0 12px;">
-                {{ cacca_rules }} ·
-                <a href="/corners-tracker">📊 Corners Tracker</a>
-            </div>
-
-            {% if caccas %}
-                {% set a = caccas[0] %}
-                {% set resolved = a.legs | selectattr('result') | list | length %}
-                <div class="cards">
-                    <div class="card gold">
-                        <div class="card-head">
-                            <span class="tag">{{ a.date }}</span>
-                            <span class="when">
-                                {% if cacca_cur.status == 'pending' %}⏳ Pending grading · {{ resolved }}/{{ a.n_legs }} legs settled
-                                {% else %}✨ New · {{ a.n_legs }} legs · from {{ a.candidates }} candidates{% endif %}
-                            </span>
-                        </div>
-
-                        {% for l in a.legs %}
-                            <div class="leg">
-                                <div class="teams">
-                                    {% if l.result == 'win' %}✅{% elif l.result == 'loss' %}❌{% else %}⏳{% endif %}
-                                    {{ l.fixture }}
-                                </div>
-                                <div class="hint">{{ l.league }} · {{ l.kickoff|eat_full }} EAT{% if l.score %} · final {{ l.score }}{% endif %}</div>
-                                <div class="leg-row">
-                                    <b class="over">{{ l.pick }}</b>
-                                    <span>exp {{ l.exp }} · model odds {{ l.odds }} · {{ (l.prob*100)|round(1) }}%</span>
-                                </div>
-                            </div>
-                        {% endfor %}
-
-                        <div class="acca-sum">
-                            <span>Model odds <b>{{ a.odds }}</b></span>
-                            <span>Model chance {{ (a.prob*100)|round(1) }}%</span>
-                        </div>
-
-                        {% if cacca_cur.logged %}
-                            <div class="hint" style="margin-top:10px;">✓ Logged — graded automatically on the
-                                <a href="/corners-tracker">Corners Tracker</a>.</div>
-                        {% else %}
-                            <form method="POST" action="/log_cacca" class="log-form">
-                                <input type="hidden" name="acca_id" value="{{ a.id }}">
-                                <div class="log-row">
-                                    <input type="number" name="stake" value="1.0" min="0.1" step="0.1" aria-label="Stake in units">
-                                    <span class="hint">units</span>
-                                    <input type="number" name="odds" min="1.01" step="0.01" style="width:auto;flex:1;"
-                                           placeholder="Bookmaker odds (optional)" aria-label="Bookmaker combined odds, optional">
-                                </div>
-                                <div class="log-row" style="margin-top:8px;">
-                                    <button type="submit">✓ Log This Acca</button>
-                                </div>
-                            </form>
-                        {% endif %}
-
-                        <form method="POST" action="/cacca/skip" style="margin-top:10px;"
-                              onsubmit="return confirm('Skip this acca? It will be voided and a new one can be generated.');">
-                            <button class="btn-sm" type="submit">Skip this acca</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="hint" style="margin-top:12px;">
-                    No bookmaker corner odds are available from the API, so the odds above are model-implied
-                    (1 ÷ probability). Enter your bookmaker's combined odds when logging if you want profit tracked;
-                    otherwise the tracker compares the hit rate with what the model expected.
-                    One acca per day, frozen until graded.
-                </div>
-            {% else %}
-                <div class="empty">{{ cacca_cur.reason or "No corners acca available right now." }}<br>
-                    <span class="hint">It needs 3+ qualifying Over picks today, or corner data to be loaded
-                        (<code>python corners_data.py</code>).</span><br>
-                    <a href="/?refresh=1&tab=cacca">↻ Refresh</a></div>
-            {% endif %}
-
-            {% if cacca_cur.prev %}
-                {% set pv = cacca_cur.prev %}
-                <div class="hint" style="margin-top:14px;text-align:center;">
-                    Previous corners acca ({{ pv.acca.date }}, {{ pv.acca.n_legs }} legs):
-                    <b class="{{ 'pos' if pv.result == 'win' else ('neg' if pv.result == 'loss' else '') }}">{{ pv.result|upper }}</b>
-                    {% if pv.note %}· {{ pv.note }}{% endif %}
-                </div>
-            {% endif %}
-        </section>
-
         <!-- ================= HALF-TIME O/U 1.5 ================= -->
         <section id="ht" class="panel">
             <div class="pill-title"><span>First Half Goals · Over / Under {{ ht_info.line }}</span></div>
@@ -485,8 +259,7 @@
             {% if ht_info.ready %}
                 <div class="hint" style="margin:-6px 0 12px;">
                     Expected first-half goals from {{ ht_info.n_matches }} matches with a half-time score
-                    (average {{ ht_info.avg_total|round(2) }} per match, {{ (ht_info.base_over*100)|round(0)|int }}% went over {{ ht_info.line }}) ·
-                    <a href="/ht-tracker">📊 HT Acca Tracker</a>
+                    (average {{ ht_info.avg_total|round(2) }} per match, {{ (ht_info.base_over*100)|round(0)|int }}% went over {{ ht_info.line }})
                 </div>
 
                 {% if ht_rows %}
@@ -559,99 +332,11 @@
             {% endif %}
         </section>
 
-        <!-- ================= HALF-TIME ACCA ================= -->
-        <section id="hacca" class="panel">
-            <div class="pill-title"><span>Today's Half-Time Under 1.5 Acca</span></div>
-            <div class="hint" style="margin:-6px 0 12px;">
-                {{ hacca_rules }} ·
-                <a href="/ht-tracker">📊 HT Tracker</a>
-            </div>
-
-            {% if haccas %}
-                {% set a = haccas[0] %}
-                {% set resolved = a.legs | selectattr('result') | list | length %}
-                <div class="cards">
-                    <div class="card gold">
-                        <div class="card-head">
-                            <span class="tag">{{ a.date }}</span>
-                            <span class="when">
-                                {% if hacca_cur.status == 'pending' %}⏳ Pending grading · {{ resolved }}/{{ a.n_legs }} legs settled
-                                {% else %}✨ New · {{ a.n_legs }} legs · from {{ a.candidates }} candidates{% endif %}
-                            </span>
-                        </div>
-
-                        {% for l in a.legs %}
-                            <div class="leg">
-                                <div class="teams">
-                                    {% if l.result == 'win' %}✅{% elif l.result == 'loss' %}❌{% else %}⏳{% endif %}
-                                    {{ l.fixture }}
-                                </div>
-                                <div class="hint">{{ l.league }} · {{ l.kickoff|eat_full }} EAT{% if l.score %} · final {{ l.score }}{% endif %}</div>
-                                <div class="leg-row">
-                                    <b class="under">{{ l.pick }}</b>
-                                    <span>exp {{ l.exp }} · model odds {{ l.odds }} · {{ (l.prob*100)|round(1) }}%</span>
-                                </div>
-                            </div>
-                        {% endfor %}
-
-                        <div class="acca-sum">
-                            <span>Model odds <b>{{ a.odds }}</b></span>
-                            <span>Model chance {{ (a.prob*100)|round(1) }}%</span>
-                        </div>
-
-                        {% if hacca_cur.logged %}
-                            <div class="hint" style="margin-top:10px;">✓ Logged — graded automatically on the
-                                <a href="/ht-tracker">HT Tracker</a>.</div>
-                        {% else %}
-                            <form method="POST" action="/log_hacca" class="log-form">
-                                <input type="hidden" name="acca_id" value="{{ a.id }}">
-                                <div class="log-row">
-                                    <input type="number" name="stake" value="1.0" min="0.1" step="0.1" aria-label="Stake in units">
-                                    <span class="hint">units</span>
-                                    <input type="number" name="odds" min="1.01" step="0.01" style="width:auto;flex:1;"
-                                           placeholder="Bookmaker odds (optional)" aria-label="Bookmaker combined odds, optional">
-                                </div>
-                                <div class="log-row" style="margin-top:8px;">
-                                    <button type="submit">✓ Log This Acca</button>
-                                </div>
-                            </form>
-                        {% endif %}
-
-                        <form method="POST" action="/hacca/skip" style="margin-top:10px;"
-                              onsubmit="return confirm('Skip this acca? It will be voided and a new one can be generated.');">
-                            <button class="btn-sm" type="submit">Skip this acca</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="hint" style="margin-top:12px;">
-                    No half-time odds are available from the API on the free plan, so the odds above are model-implied
-                    (1 ÷ probability). Enter your bookmaker's combined odds when logging if you want profit tracked;
-                    otherwise the tracker compares the hit rate with what the model expected.
-                    One acca per day, frozen until graded.
-                </div>
-            {% else %}
-                <div class="empty">{{ hacca_cur.reason or "No half-time acca available right now." }}<br>
-                    <span class="hint">It needs enough qualifying Under 1.5 HT picks today, or half-time data to be loaded
-                        (<code>python ht_data.py</code>).</span><br>
-                    <a href="/?refresh=1&tab=hacca">↻ Refresh</a></div>
-            {% endif %}
-
-            {% if hacca_cur.prev %}
-                {% set pv = hacca_cur.prev %}
-                <div class="hint" style="margin-top:14px;text-align:center;">
-                    Previous half-time acca ({{ pv.acca.date }}, {{ pv.acca.n_legs }} legs):
-                    <b class="{{ 'pos' if pv.result == 'win' else ('neg' if pv.result == 'loss' else '') }}">{{ pv.result|upper }}</b>
-                    {% if pv.note %}· {{ pv.note }}{% endif %}
-                </div>
-            {% endif %}
-        </section>
-
         <!-- ================= BTTS ================= -->
         <section id="btts" class="panel">
             <div class="pill-title"><span>Both Teams To Score · Yes / No</span></div>
             <div class="hint" style="margin:-6px 0 12px;">
-                From the same expected goals as Over/Under 2.5 · bookmaker odds shown when available ·
-                <a href="/btts-tracker">📊 BTTS Acca Tracker</a>
+                From the same expected goals as Over/Under 2.5 · bookmaker odds shown when available
             </div>
 
             {% if btts_rows %}
@@ -719,88 +404,6 @@
             {% else %}
                 <div class="empty">No upcoming matches to predict.<br>
                     <span class="hint">BTTS uses the same fixtures as All Matches.</span></div>
-            {% endif %}
-        </section>
-
-        <!-- ================= BTTS ACCA ================= -->
-        <section id="bacca" class="panel">
-            <div class="pill-title"><span>Today's BTTS Yes Acca</span></div>
-            <div class="hint" style="margin:-6px 0 12px;">
-                {{ bacca_rules }} ·
-                <a href="/btts-tracker">📊 BTTS Tracker</a>
-            </div>
-
-            {% if baccas %}
-                {% set a = baccas[0] %}
-                {% set resolved = a.legs | selectattr('result') | list | length %}
-                <div class="cards">
-                    <div class="card gold">
-                        <div class="card-head">
-                            <span class="tag">{{ a.date }}</span>
-                            <span class="when">
-                                {% if bacca_cur.status == 'pending' %}⏳ Pending grading · {{ resolved }}/{{ a.n_legs }} legs settled
-                                {% else %}✨ New · {{ a.n_legs }} legs · from {{ a.candidates }} candidates{% endif %}
-                            </span>
-                        </div>
-
-                        {% for l in a.legs %}
-                            <div class="leg">
-                                <div class="teams">
-                                    {% if l.result == 'win' %}✅{% elif l.result == 'loss' %}❌{% else %}⏳{% endif %}
-                                    {{ l.fixture }}
-                                </div>
-                                <div class="hint">{{ l.league }} · {{ l.kickoff|eat_full }} EAT{% if l.score %} · final {{ l.score }}{% endif %}</div>
-                                <div class="leg-row">
-                                    <b class="over">{{ l.pick }}</b>
-                                    <span>@ {{ l.odds }} · model {{ (l.prob*100)|round(1) }}%</span>
-                                </div>
-                            </div>
-                        {% endfor %}
-
-                        <div class="acca-sum">
-                            <span>Combined odds <b>{{ a.odds }}</b></span>
-                            <span>Model {{ (a.prob*100)|round(1) }}% · book {{ (100/a.odds)|round(1) }}%</span>
-                            <span>EV {{ '%+.1f'|format(a.ev*100) }}%</span>
-                        </div>
-
-                        {% if bacca_cur.logged %}
-                            <div class="hint" style="margin-top:10px;">✓ Logged — grading happens automatically on the
-                                <a href="/btts-tracker">BTTS Tracker</a>.</div>
-                        {% else %}
-                            <form method="POST" action="/log_bacca" class="log-form">
-                                <input type="hidden" name="acca_id" value="{{ a.id }}">
-                                <div class="log-row">
-                                    <input type="number" name="stake" value="1.0" min="0.1" step="0.1" aria-label="Stake in units">
-                                    <span class="hint">units</span>
-                                    <button type="submit">✓ Log This Acca</button>
-                                </div>
-                            </form>
-                        {% endif %}
-
-                        <form method="POST" action="/bacca/skip" style="margin-top:10px;"
-                              onsubmit="return confirm('Skip this acca? It will be voided and a new one can be generated.');">
-                            <button class="btn-sm" type="submit">Skip this acca</button>
-                        </form>
-                    </div>
-                </div>
-                <div class="hint" style="margin-top:12px;">
-                    One acca per day. It stays fixed until it is graded; a new one is generated only after that.
-                    Odds are the bookmaker's BTTS Yes prices. Model chance assumes independent matches, so treat the
-                    combined figure as optimistic.
-                </div>
-            {% else %}
-                <div class="empty">{{ bacca_cur.reason or "No acca available right now." }}<br>
-                    <span class="hint">It needs 2+ BTTS Yes picks today (58%+) with bookmaker odds that combine into range.</span><br>
-                    <a href="/?refresh=1&tab=bacca">↻ Refresh</a> closer to kickoff.</div>
-            {% endif %}
-
-            {% if bacca_cur.prev %}
-                {% set pv = bacca_cur.prev %}
-                <div class="hint" style="margin-top:14px;text-align:center;">
-                    Previous acca ({{ pv.acca.date }}, {{ pv.acca.n_legs }} legs @ {{ pv.acca.odds }}):
-                    <b class="{{ 'pos' if pv.result == 'win' else ('neg' if pv.result == 'loss' else '') }}">{{ pv.result|upper }}</b>
-                    {% if pv.note %}· {{ pv.note }}{% endif %}
-                </div>
             {% endif %}
         </section>
 
@@ -954,18 +557,6 @@
                                             Corners {{ r.corners.ah }}-{{ r.corners.aa }} · {{ r.corners.total }} · {{ 'Over' if r.corners.actual_over else 'Under' }} {{ r.corners.line }}
                                         </div>
                                     {% endif %}
-                                    {% if r.bet %}
-                                        <div class="rc-bet">
-                                            <span>Your bet: {{ r.bet.pick }}</span>
-                                            {% if r.bet.result == 'win' %}
-                                                <span class="verdict won">✓ WON {% if r.bet.pnl is not none %}{{ "%+.2f"|format(r.bet.pnl) }}u{% endif %}</span>
-                                            {% elif r.bet.result == 'loss' %}
-                                                <span class="verdict lost">✗ LOST {% if r.bet.pnl is not none %}{{ "%+.2f"|format(r.bet.pnl) }}u{% endif %}</span>
-                                            {% else %}
-                                                <span class="verdict pend">Pending</span>
-                                            {% endif %}
-                                        </div>
-                                    {% endif %}
                                 </div>
                             </div>
                         </div>
@@ -1058,7 +649,7 @@
                                         {% if top.tier %}<span class="tier {{ top.tier }}">{{ top.tier }}</span>{% endif %}
                                     </div>
                                     <div style="font-size:1.25rem;font-weight:800;margin:6px 0;">{{ top.pick }}</div>
-                                    <div class="acca-sum">
+                                    <div class="sel-sum">
                                         <span>Probability <b>{{ top.prob }}%</b></span>
                                         <span>Real odds <b>{{ ("%.2f"|format(top.real)) if top.real else "n/a" }}</b></span>
                                         <span>Model odds <b>{{ top.model }}</b></span>

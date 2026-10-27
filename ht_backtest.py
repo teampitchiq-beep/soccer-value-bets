@@ -9,7 +9,7 @@ Each match is predicted using ONLY earlier matches.
 Needs data/ht_goals.csv  (python ht_data.py).  Output:
   * log loss vs always predicting the base rate   (must be lower to prove an edge)
   * best HT_SCALE and HT_CAL_A / HT_CAL_B to put in config.py
-  * calibration table and hit rates of the picks (Under legs matter for the HT acca)
+  * calibration table and hit rates of the picks
 """
 import argparse
 
@@ -88,7 +88,7 @@ def main():
             print(f"  {name:<7} n={m.sum():<5} predicted {prob[m].mean()*100:5.1f}%  hit {hit[m].mean()*100:5.1f}%")
     u = ~pick_over
     if u.any():
-        print(f"\nUnder {LINE:g} HT picks (what the HT acca uses): n={u.sum()}, "
+        print(f"\nUnder {LINE:g} HT picks: n={u.sum()}, "
               f"predicted {prob[u].mean()*100:.1f}%, hit {hit[u].mean()*100:.1f}%")
     for t in (0.58, 0.65, 0.70, 0.75):
         m = u & (prob >= t)

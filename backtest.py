@@ -138,4 +138,4 @@ if __name__ == "__main__":
     league_breakdown(df, res, p, y, start, args.min_n)
 
     print("\nNote: no historical odds are stored, so ROI can't be backtested here.\n"
-          "Use tracker.py results over 100+ bets to judge real profitability.\n")
+          "Judge real profitability over 100+ bets.\n")

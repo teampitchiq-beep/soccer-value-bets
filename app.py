@@ -1,6 +1,6 @@
 # app.py
 """
-Single-entry daily runner with auto-settle and hourly recent fetcher.
+Single-entry daily runner with a once-a-day recent-matches fetcher.
 """
 import json
 import os
@@ -23,34 +23,12 @@ LAST_FETCH_FILE = "data/last_fetch.txt"
 REFRESH_INTERVAL_HOURS = 24
 RESULTS_DAYS_DEFAULT = 7
 
-AUTO_SETTLE_INTERVAL_SECONDS = 15 * 60
 RECENT_FETCH_INTERVAL_SECONDS = 60 * 60  # 1 hour
 
 app = Flask(__name__)
 
 # Display times in Nairobi (EAT, UTC+3, no DST). Stored data stays UTC.
 EAT = timezone(timedelta(hours=3))
-
-
-# Auto-log the daily goals acca and corners acca as soon as they are generated.
-# Set AUTO_LOG_ACCAS = False to go back to logging by hand with the button.
-AUTO_LOG_ACCAS = True
-AUTO_LOG_STAKE = 1.0        # units staked on each auto-logged acca
-
-
-def _auto_log_current(cur, add_fn, label):
-    """cur = result of current_acca()/current_cacca(). Logs it if not logged yet."""
-    try:
-        if AUTO_LOG_ACCAS and cur.get("acca") and not cur.get("logged"):
-            ok, _ = add_fn(cur["acca"], stake=AUTO_LOG_STAKE)
-            if ok:
-                cur["logged"] = True
-                print(f"[AUTO-LOG] {label} acca {cur['acca']['id']} logged "
-                      f"({AUTO_LOG_STAKE}u @ {cur['acca']['odds']}).")
-            else:
-                cur["logged"] = True          # already in the log
-    except Exception as e:
-        print(f"[AUTO-LOG] {label} error: {e}")
 
 
 def _to_eat(value):
@@ -274,7 +252,6 @@ def run_daily_pipeline(force_no_refresh=False):
 
     banner("READY — Web UI is starting")
     print(f"  Matches : http://127.0.0.1:5000/")
-    print(f"  Tracker : http://127.0.0.1:5000/tracker")
     print(f"  Stop    : Ctrl+C  or  pkill -f 'python app.py'")
     print("=" * 68 + "\n")
 
@@ -391,23 +368,6 @@ def load_recent_results(days=RESULTS_DAYS_DEFAULT):
         print(f"Predictions history failed: {e}")
         pred_map = {}
 
-    bets_by_event = {}
-    if os.path.exists("bets_log.csv"):
-        try:
-            bets = pd.read_csv("bets_log.csv")
-            for _, b in bets.iterrows():
-                try:
-                    eid = int(b["event_id"])
-                except (TypeError, ValueError):
-                    continue
-                bets_by_event[eid] = {
-                    "pick":   str(b.get("pick", "")),
-                    "result": str(b.get("result", "")).lower(),
-                    "pnl":    float(b["pnl"]) if pd.notna(b.get("pnl")) else None,
-                }
-        except Exception:
-            pass
-
     results = []
     for _, row in recent.iterrows():
         try:
@@ -460,7 +420,6 @@ def load_recent_results(days=RESULTS_DAYS_DEFAULT):
             "total":       total,
             "over_hit":    actual_over,
             "score":       f"{hg}-{ag}",
-            "bet":         bets_by_event.get(eid),
             "prediction":  prediction,
         })
 
@@ -505,39 +464,6 @@ def _mark_job_done(name):
             json.dump(jobs, f)
     except Exception as e:
         print(f"Could not record job state: {e}")
-
-
-def auto_settle_loop():
-    while True:
-        try:
-            time.sleep(AUTO_SETTLE_INTERVAL_SECONDS)
-            from tracker import auto_settle
-            n, details = auto_settle(verbose=False)
-            if n > 0:
-                print(f"\n[AUTO-SETTLE] {n} bet(s) settled.")
-                invalidate_matches_cache()
-            from acca import settle_accas, grade_current
-            grade_current()                      # frees the daily acca slot once graded
-            na, _ = settle_accas(verbose=False)
-            if na > 0:
-                print(f"\n[AUTO-SETTLE] {na} acca(s) settled.")
-            from corner_acca import settle_accas as settle_caccas, grade_current as grade_ccurrent
-            grade_ccurrent()
-            nc, _ = settle_caccas(verbose=False)
-            if nc > 0:
-                print(f"\n[AUTO-SETTLE] {nc} corners acca(s) settled.")
-            from ht_acca import settle_accas as settle_haccas, grade_current as grade_hcurrent
-            grade_hcurrent()
-            nh, _ = settle_haccas(verbose=False)
-            if nh > 0:
-                print(f"\n[AUTO-SETTLE] {nh} half-time acca(s) settled.")
-            from btts_acca import settle_accas as settle_baccas, grade_current as grade_bcurrent
-            grade_bcurrent()
-            nb, _ = settle_baccas(verbose=False)
-            if nb > 0:
-                print(f"\n[AUTO-SETTLE] {nb} BTTS acca(s) settled.")
-        except Exception as e:
-            print(f"[AUTO-SETTLE] error: {e}")
 
 
 def recent_fetch_loop():
@@ -585,47 +511,10 @@ def corners_update_loop():
         time.sleep(RECENT_FETCH_INTERVAL_SECONDS)
 
 
-def auto_log_loop():
-    """Builds today's goals + corners accas (from the day's saved picks, no extra API
-    calls) and logs them, even if nobody opens the page."""
-    time.sleep(90)
-    while True:
-        try:
-            if AUTO_LOG_ACCAS and DF is not None:
-                matches = load_matches().get("matches", [])
-                if matches:
-                    from acca import current_acca, add_acca as add_goals_acca
-                    _auto_log_current(current_acca(matches), add_goals_acca, "Goals")
-                    from corners_model import corner_predictions
-                    from corner_acca import current_cacca, add_acca as add_corners_acca
-                    rows, _ = corner_predictions(matches)
-                    _auto_log_current(current_cacca(rows), add_corners_acca, "Corners")
-                    from ht_model import ht_predictions
-                    from ht_acca import current_hacca, add_acca as add_ht_acca
-                    hrows, _ = ht_predictions(matches)
-                    _auto_log_current(current_hacca(hrows), add_ht_acca, "Half-time")
-                    from btts_model import btts_predictions
-                    from btts_acca import current_bacca, add_acca as add_btts_acca
-                    _auto_log_current(current_bacca(btts_predictions(matches)), add_btts_acca, "BTTS")
-        except Exception as e:
-            print(f"[AUTO-LOG] error: {e}")
-        time.sleep(AUTO_SETTLE_INTERVAL_SECONDS)
-
-
 def start_background_threads():
-    t4 = threading.Thread(target=auto_log_loop, daemon=True)
-    t4.start()
-    print("✓ Auto-log running (goals, corners, half-time + BTTS accas)" if AUTO_LOG_ACCAS
-          else "✓ Auto-log is OFF (log accas by hand)")
-
     t3 = threading.Thread(target=corners_update_loop, daemon=True)
     t3.start()
     print("✓ Corners updater running (once a day)")
-
-    t1 = threading.Thread(target=auto_settle_loop, daemon=True)
-    t1.start()
-    print(f"✓ Auto-settle thread running (every "
-          f"{AUTO_SETTLE_INTERVAL_SECONDS // 60} min)")
 
     t2 = threading.Thread(target=recent_fetch_loop, daemon=True)
     t2.start()
@@ -858,63 +747,28 @@ def index():
                     result = {"error": f"Prediction failed: {e}"}
 
     try:
-        from acca import current_acca, rules_text
-        acca_cur = current_acca(all_matches)          # one acca per day, frozen until graded
-        from acca import add_acca as add_goals_acca
-        _auto_log_current(acca_cur, add_goals_acca, "Goals")
-        accas = [acca_cur["acca"]] if acca_cur.get("acca") else []
-        acca_rules = rules_text()
-    except Exception as e:
-        print(f"acca build failed: {e}")
-        acca_cur, accas, acca_rules = {"acca": None, "status": "none", "prev": None,
-                                       "logged": False, "reason": "Acca unavailable."}, [], ""
-
-    try:
         from corners_model import corner_predictions
-        from corner_acca import current_cacca, rules_text as cacca_rules_text
         corner_rows, corner_info = corner_predictions(all_matches)
-        cacca_cur = current_cacca(corner_rows)
-        from corner_acca import add_acca as add_corners_acca
-        _auto_log_current(cacca_cur, add_corners_acca, "Corners")
-        caccas = [cacca_cur["acca"]] if cacca_cur.get("acca") else []
-        cacca_rules = cacca_rules_text()
     except Exception as e:
         print(f"corners build failed: {e}")
         corner_rows, corner_info = [], {"ready": False, "line": 8.5, "message": f"Corners unavailable: {e}"}
-        cacca_cur, caccas, cacca_rules = {"acca": None, "status": "none", "prev": None,
-                                          "logged": False, "reason": "Corners acca unavailable."}, [], ""
 
     try:
         from ht_model import ht_predictions
-        from ht_acca import current_hacca, rules_text as hacca_rules_text
         ht_rows, ht_info = ht_predictions(all_matches)
-        hacca_cur = current_hacca(ht_rows)
-        from ht_acca import add_acca as add_ht_acca
-        _auto_log_current(hacca_cur, add_ht_acca, "Half-time")
-        haccas = [hacca_cur["acca"]] if hacca_cur.get("acca") else []
-        hacca_rules = hacca_rules_text()
     except Exception as e:
         print(f"half-time build failed: {e}")
         ht_rows, ht_info = [], {"ready": False, "line": 1.5, "message": f"Half-time unavailable: {e}"}
-        hacca_cur, haccas, hacca_rules = {"acca": None, "status": "none", "prev": None,
-                                          "logged": False, "reason": "Half-time acca unavailable."}, [], ""
 
     try:
         from btts_model import btts_predictions
-        from btts_acca import current_bacca, rules_text as bacca_rules_text, add_acca as add_btts_acca
         btts_rows = btts_predictions(all_matches)
         _btts_by_id = {r["event_id"]: r for r in btts_rows}
         for _m in all_matches:                       # so All Matches cards can show BTTS too
             _m["btts"] = _btts_by_id.get(_m["event_id"])
-        bacca_cur = current_bacca(btts_rows)
-        _auto_log_current(bacca_cur, add_btts_acca, "BTTS")
-        baccas = [bacca_cur["acca"]] if bacca_cur.get("acca") else []
-        bacca_rules = bacca_rules_text()
     except Exception as e:
         print(f"BTTS build failed: {e}")
-        btts_rows, baccas, bacca_rules = [], [], ""
-        bacca_cur = {"acca": None, "status": "none", "prev": None, "logged": False,
-                     "reason": "BTTS acca unavailable."}
+        btts_rows = []
 
     teams_by_league = {}
     if DF is not None and not DF.empty:
@@ -939,269 +793,13 @@ def index():
         results=results,
         rx=_results_summary(results),
         results_days=results_days,
-        accas=accas,
-        acca_cur=acca_cur,
-        acca_rules=acca_rules,
         corner_rows=sorted(corner_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
         corner_info=corner_info,
-        caccas=caccas,
-        cacca_cur=cacca_cur,
-        cacca_rules=cacca_rules,
         teams_by_league=teams_by_league,
         btts_rows=sorted(btts_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
-        baccas=baccas,
-        bacca_cur=bacca_cur,
-        bacca_rules=bacca_rules,
         ht_rows=sorted(ht_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
         ht_info=ht_info,
-        haccas=haccas,
-        hacca_cur=hacca_cur,
-        hacca_rules=hacca_rules,
     )
-
-
-@app.route("/tracker")
-def tracker_view():
-    from tracker import load_bets, auto_pnl, auto_settle
-
-    try:
-        auto_settle(verbose=False)
-    except Exception:
-        pass
-
-    try:
-        df = load_bets()
-
-        if len(df) == 0:
-            return render_template(
-                "tracker.html",
-                summary={
-                    "total": 0, "settled": 0, "pending": 0,
-                    "wins": 0, "losses": 0,
-                    "total_stake": 0, "total_pnl": 0,
-                    "roi": 0, "win_rate": 0, "avg_odds": 0,
-                },
-                settled=[], pending=[],
-            )
-
-        df["pnl"] = df.apply(
-            lambda r: auto_pnl(r) if pd.isna(r["pnl"]) else r["pnl"], axis=1
-        )
-        settled = df[df["result"].isin(["win", "loss", "void"])].copy()
-        pending = df[~df["result"].isin(["win", "loss", "void"])].copy()
-
-        if len(settled) > 0:
-            wins = (settled["result"] == "win").sum()
-            losses = (settled["result"] == "loss").sum()
-            total_stake = settled["stake"].sum()
-            total_pnl = settled["pnl"].sum()
-            roi = total_pnl / total_stake * 100 if total_stake else 0
-            win_rate = wins / (wins + losses) * 100 if (wins + losses) else 0
-            avg_odds = settled["odds"].mean()
-        else:
-            wins = losses = 0
-            total_stake = total_pnl = roi = win_rate = avg_odds = 0
-
-        summary = {
-            "total": len(df),
-            "settled": len(settled),
-            "pending": len(pending),
-            "wins": int(wins),
-            "losses": int(losses),
-            "total_stake": round(float(total_stake), 2),
-            "total_pnl": round(float(total_pnl), 2),
-            "roi": round(float(roi), 1),
-            "win_rate": round(float(win_rate), 1),
-            "avg_odds": round(float(avg_odds), 2) if avg_odds else 0,
-        }
-
-        settled_rows = settled.sort_values("date", ascending=False).to_dict("records")
-        pending_rows = pending.sort_values("date").to_dict("records")
-
-        return render_template(
-            "tracker.html",
-            summary=summary,
-            settled=settled_rows,
-            pending=pending_rows,
-        )
-    except Exception as e:
-        return f"<pre>Tracker error: {e}</pre>"
-
-
-@app.route("/log_acca", methods=["POST"])
-def log_acca():
-    from acca import get_current, add_acca
-
-    acca_id = request.form.get("acca_id", "")
-    try:
-        stake = float(request.form.get("stake", "1.0"))
-    except ValueError:
-        stake = 1.0
-
-    cur = get_current()                      # the frozen acca currently on screen
-    if cur and cur["id"] == acca_id:
-        ok, _ = add_acca(cur, stake=stake)
-        return redirect(url_for("index", tab="acca",
-                                msg="acca_logged" if ok else "acca_duplicate"))
-    return redirect(url_for("index", tab="acca", msg="acca_missing"))
-
-
-@app.route("/acca/skip", methods=["POST"])
-def skip_acca():
-    from acca import skip_current
-    skip_current()
-    return redirect(url_for("index", tab="acca", msg="acca_skipped"))
-
-
-@app.route("/acca/void/<acca_id>", methods=["POST"])
-def void_acca_route(acca_id):
-    from acca import void_acca
-    void_acca(acca_id)
-    return redirect(url_for("acca_tracker_view"))
-
-
-@app.route("/acca-tracker")
-def acca_tracker_view():
-    from acca import settle_accas, summary, rows_for_display
-    try:
-        settle_accas(verbose=False)            # needs internet; silently skipped offline
-    except Exception:
-        pass
-    pending, settled = rows_for_display()
-    return render_template("acca_tracker.html", s=summary(),
-                           pending=pending, settled=settled)
-
-
-@app.route("/log_cacca", methods=["POST"])
-def log_cacca():
-    from corner_acca import get_current, add_acca
-
-    acca_id = request.form.get("acca_id", "")
-    try:
-        stake = float(request.form.get("stake", "1.0"))
-    except ValueError:
-        stake = 1.0
-
-    cur = get_current()
-    if cur and cur["id"] == acca_id:
-        ok, _ = add_acca(cur, stake=stake, bookmaker_odds=request.form.get("odds", ""))
-        return redirect(url_for("index", tab="cacca",
-                                msg="cacca_logged" if ok else "cacca_duplicate"))
-    return redirect(url_for("index", tab="cacca", msg="cacca_missing"))
-
-
-@app.route("/cacca/skip", methods=["POST"])
-def skip_cacca():
-    from corner_acca import skip_current
-    skip_current()
-    return redirect(url_for("index", tab="cacca", msg="cacca_skipped"))
-
-
-@app.route("/cacca/void/<acca_id>", methods=["POST"])
-def void_cacca_route(acca_id):
-    from corner_acca import void_acca
-    void_acca(acca_id)
-    return redirect(url_for("corners_tracker_view"))
-
-
-@app.route("/corners-tracker")
-def corners_tracker_view():
-    from corner_acca import settle_accas, summary, rows_for_display
-    try:
-        settle_accas(verbose=False)            # needs internet; silently skipped offline
-    except Exception:
-        pass
-    pending, settled = rows_for_display()
-    return render_template("corners_tracker.html", s=summary(),
-                           pending=pending, settled=settled)
-
-
-@app.route("/log_hacca", methods=["POST"])
-def log_hacca():
-    from ht_acca import get_current, add_acca
-
-    acca_id = request.form.get("acca_id", "")
-    try:
-        stake = float(request.form.get("stake", "1.0"))
-    except ValueError:
-        stake = 1.0
-
-    cur = get_current()
-    if cur and cur["id"] == acca_id:
-        ok, _ = add_acca(cur, stake=stake, bookmaker_odds=request.form.get("odds", ""))
-        return redirect(url_for("index", tab="hacca",
-                                msg="hacca_logged" if ok else "hacca_duplicate"))
-    return redirect(url_for("index", tab="hacca", msg="hacca_missing"))
-
-
-@app.route("/hacca/skip", methods=["POST"])
-def skip_hacca():
-    from ht_acca import skip_current
-    skip_current()
-    return redirect(url_for("index", tab="hacca", msg="hacca_skipped"))
-
-
-@app.route("/hacca/void/<acca_id>", methods=["POST"])
-def void_hacca_route(acca_id):
-    from ht_acca import void_acca
-    void_acca(acca_id)
-    return redirect(url_for("ht_tracker_view"))
-
-
-@app.route("/ht-tracker")
-def ht_tracker_view():
-    from ht_acca import settle_accas, summary, rows_for_display
-    try:
-        settle_accas(verbose=False)            # needs internet; silently skipped offline
-    except Exception:
-        pass
-    pending, settled = rows_for_display()
-    return render_template("ht_tracker.html", s=summary(),
-                           pending=pending, settled=settled)
-
-
-@app.route("/log_bacca", methods=["POST"])
-def log_bacca():
-    from btts_acca import get_current, add_acca
-
-    acca_id = request.form.get("acca_id", "")
-    try:
-        stake = float(request.form.get("stake", "1.0"))
-    except ValueError:
-        stake = 1.0
-
-    cur = get_current()
-    if cur and cur["id"] == acca_id:
-        ok, _ = add_acca(cur, stake=stake)
-        return redirect(url_for("index", tab="bacca",
-                                msg="bacca_logged" if ok else "bacca_duplicate"))
-    return redirect(url_for("index", tab="bacca", msg="bacca_missing"))
-
-
-@app.route("/bacca/skip", methods=["POST"])
-def skip_bacca():
-    from btts_acca import skip_current
-    skip_current()
-    return redirect(url_for("index", tab="bacca", msg="bacca_skipped"))
-
-
-@app.route("/bacca/void/<acca_id>", methods=["POST"])
-def void_bacca_route(acca_id):
-    from btts_acca import void_acca
-    void_acca(acca_id)
-    return redirect(url_for("btts_tracker_view"))
-
-
-@app.route("/btts-tracker")
-def btts_tracker_view():
-    from btts_acca import settle_accas, summary, rows_for_display
-    try:
-        settle_accas(verbose=False)            # needs internet; silently skipped offline
-    except Exception:
-        pass
-    pending, settled = rows_for_display()
-    return render_template("btts_tracker.html", s=summary(),
-                           pending=pending, settled=settled)
 
 
 @app.route("/api/matches")
@@ -1239,21 +837,11 @@ def cmd_status():
           f"{'exists' if os.path.exists(MATCHES_XG_CSV) else 'missing'}")
     print(f"  xg_cache.csv         : "
           f"{'exists' if os.path.exists('data/xg_cache.csv') else 'missing'}")
-    print(f"  bets_log.csv         : "
-          f"{'exists' if os.path.exists('bets_log.csv') else 'missing'}")
     print(f"  predictions_history  : "
           f"{'exists' if os.path.exists('data/predictions_history.csv') else 'missing'}")
     print(f"  last full download   : {last_fetch_age_str()}")
     print(f"  newest match on disk : {_newest_match_date()}")
 
-    if os.path.exists("bets_log.csv"):
-        try:
-            df = pd.read_csv("bets_log.csv")
-            pending = df[~df["result"].isin(["win", "loss", "void"])]
-            print(f"  bets logged          : {len(df)}")
-            print(f"  pending             : {len(pending)}")
-        except Exception:
-            pass
 
 
 def cmd_scan():
@@ -1286,12 +874,6 @@ if __name__ == "__main__":
         cmd_status()
         sys.exit(0)
 
-    if "--auto-settle" in sys.argv:
-        from tracker import auto_settle
-        n, details = auto_settle(verbose=True)
-        print(f"Settled {n} bet(s).")
-        sys.exit(0)
-
     if "--scan" in sys.argv:
         if os.path.exists(MATCHES_XG_CSV):
             from model import load_data
@@ -1321,12 +903,6 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\nAborted.")
         sys.exit(0)
-
-    try:
-        from tracker import auto_settle
-        auto_settle(verbose=False)
-    except Exception as e:
-        print(f"Startup auto-settle failed: {e}")
 
     start_background_threads()
 
