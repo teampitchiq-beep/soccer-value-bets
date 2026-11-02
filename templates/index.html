@@ -4,8 +4,98 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <meta name="theme-color" content="#0a0a0b">
-    <title>PitchIQ Predictions · Over/Under 2.5</title>
+    <title>PitchIQ Predictions</title>
     <link rel="stylesheet" href="/static/theme.css?v=5">
+    <style>
+        [hidden] { display: none !important; }
+        /* Searchable picker used on Single Match. It replaces the native <select> popups: a team is only
+           chosen by a deliberate tap on an item in the list, never by the tap that opens the list. */
+        .picker { position: relative; }
+        .picker .picker-input { width: 100%; padding-right: 42px; cursor: pointer; }
+        .picker.ro::after { content: "▾"; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+                            color: var(--muted); pointer-events: none; }
+        .picker-clear { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 38px; height: 38px;
+                        background: none; border: 0; color: var(--muted); font-size: 1.4rem; line-height: 1; border-radius: 8px; }
+        .picker-list { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 40;
+                       max-height: min(46vh, 320px); overflow-y: auto; margin: 0; padding: 4px; list-style: none;
+                       background: #0d0d0f; border: 1px solid var(--line); border-radius: 10px;
+                       box-shadow: 0 12px 32px rgba(0,0,0,.65); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+        .picker-list li { padding: 10px 12px; min-height: 44px; display: flex; align-items: center; border-radius: 8px; cursor: pointer; }
+        .picker-list li.hl, .picker-list li:hover { background: #1c1c20; }
+        .picker-list li.sel { color: var(--gold); font-weight: 700; }
+        .picker-list li.none { color: var(--muted); cursor: default; }
+
+        /* Results: scoreboard + one tidy row per match */
+        .sb { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px 12px;
+              margin: 8px 0 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 14px 32px; }
+        .sb-h { font-size: .68rem; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); font-weight: 700; margin-bottom: 4px; }
+        .sr { display: grid; grid-template-columns: 74px 1fr 52px 44px; align-items: center; gap: 10px; padding: 5px 0; font-size: .88rem; }
+        .sr b { text-align: right; font-variant-numeric: tabular-nums; }
+        .sr small { text-align: right; color: var(--muted); font-size: .72rem; font-variant-numeric: tabular-nums; }
+        .sr.none b, .sr.none small { color: var(--faint); }
+        .sbar { height: 6px; background: #1d1d21; border-radius: 99px; overflow: hidden; }
+        .sbar i { display: block; height: 100%; border-radius: 99px; background: var(--gold); opacity: .55; }
+        .sbar i.g { background: var(--win); opacity: 1; } .sbar i.r { background: var(--lose); opacity: 1; }
+        .sb-foot { grid-column: 1 / -1; border-top: 1px solid var(--line); padding-top: 10px; font-size: .76rem; color: var(--muted); }
+        .rday2 { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 12px; margin: 24px 2px 8px; }
+        .rday2 h3 { margin: 0; font-size: 1.02rem; }
+        .rday2 span { font-size: .78rem; color: var(--muted); }
+        .rday2 .rec { margin-left: auto; }
+        .rl { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
+        .rrow { display: grid; grid-template-columns: 52px minmax(0, 1fr) auto 32px; grid-template-areas: "when teams picks chev" "detail detail detail detail";
+                gap: 4px 14px; align-items: center; padding: 11px 14px; border-top: 1px solid var(--line); cursor: pointer; }
+        .rl .rrow:first-child { border-top: 0; }
+        .rrow:hover { background: rgba(255,255,255,.025); }
+        .rr-when { grid-area: when; text-align: center; }
+        .rr-teams { grid-area: teams; min-width: 0; }
+        .rr-t { display: flex; justify-content: space-between; gap: 12px; line-height: 1.6; }
+        .rr-t .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .rr-t b { font-variant-numeric: tabular-nums; }
+        .rr-t.lo { color: var(--muted); } .rr-t.lo b { font-weight: 600; }
+        .rr-picks { grid-area: picks; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+        .rrow .mstat { grid-area: chev; }
+        .rrow.open .mstat { transform: rotate(180deg); background: var(--red); color: #fff; border-color: var(--red); }
+        .rr-detail { grid-area: detail; display: none; margin-top: 8px; padding: 10px 12px; background: var(--bg-2); border-radius: 10px;
+                     border: 1px solid var(--line); font-size: .84rem; gap: 10px 20px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+        .rrow.open .rr-detail { display: grid; }
+        .rr-detail .k { display: block; font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+        .rr-detail .y { color: var(--win); } .rr-detail .x { color: var(--lose); }
+        .pk { display: inline-flex; align-items: center; gap: 6px; padding: 2px 10px; border-radius: 999px; font-size: .78rem; white-space: nowrap; border: 1px solid var(--line); }
+        .pk i { font-style: normal; font-weight: 800; }
+        .pk small { color: var(--muted); font-size: .72rem; }
+        .pk.w { background: rgba(34,197,94,.08); border-color: rgba(34,197,94,.32); } .pk.w i { color: var(--win); }
+        .pk.l { background: rgba(239,68,68,.07); border-color: rgba(239,68,68,.30); } .pk.l i { color: var(--lose); }
+        .pk.p { color: var(--muted); }
+        @media (min-width: 641px) {
+            .rr-picks { align-items: stretch; width: 168px; }
+            .rr-picks .pk { justify-content: space-between; }
+        }
+        @media (max-width: 640px) {
+            .sb { grid-template-columns: 1fr; gap: 10px; }
+            .rrow { grid-template-columns: 46px minmax(0, 1fr) 32px; grid-template-areas: "when teams chev" ". picks picks" "detail detail detail"; }
+            .rr-picks { flex-direction: row; flex-wrap: wrap; justify-content: flex-start; }
+        }
+
+        /* Acca builder */
+        .acca-lbl { margin: 14px 0 6px; font-weight: 700; font-size: .85rem; color: var(--gold); }
+        .acca-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 14px; }
+        .acca-grid label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: 4px; }
+        .acca-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: .88rem; }
+        .acca-check input { width: 20px; height: 20px; min-height: 0; margin-top: 2px; flex: none; accent-color: var(--red); }
+        .acca-leg { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; background: var(--card); }
+        .acca-leg .top { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--muted); }
+        .acca-leg .teams { font-size: 1.02rem; font-weight: 700; color: var(--link); margin: 4px 0 8px; }
+        .acca-leg .pick { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-weight: 800; }
+        .acca-leg .pick .odds { color: var(--gold); font-size: 1.15rem; }
+        .acca-leg .sub { font-size: .78rem; color: var(--muted); margin-top: 4px; }
+        .acca-total { border: 1px solid var(--gold); border-radius: 12px; padding: 14px; background: var(--card); margin-top: 6px; }
+        .acca-total .big { font-size: 1.9rem; font-weight: 800; color: var(--gold); }
+        .acca-total .line { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: .9rem; }
+        .acca-total .line span:first-child { color: var(--muted); }
+        .acca-warn { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: .8rem; background: #3b2a06; border: 1px solid #eab308; color: #fde68a; }
+        .acca-none { margin-top: 16px; padding: 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
+        .acca-none b { display: block; margin-bottom: 6px; }
+    </style>
 </head>
 <body>
 {# short league codes for the compact list #}
@@ -15,7 +105,7 @@
     'Conference League': 'UECL', 'Eredivisie': 'NED', 'Liga Portugal': 'POR',
     'Süper Lig': 'TUR', 'Brasileirão Série A': 'BRA', 'Eliteserien': 'NOR',
     'Swiss Super League': 'SUI', 'Championship': 'EFL', 'Serie B': 'SB', 'MLS': 'MLS',
-    'Liga MX': 'MEX', '2. Bundesliga': 'BL2', 'Belgian Pro League': 'BEL',
+    'Liga MX': 'MEX', 'Liga MX (Apertura)': 'MXA', 'Liga MX (Clausura)': 'MXC', '2. Bundesliga': 'BL2', 'Belgian Pro League': 'BEL',
     'Brasileirão Série B': 'BRB', 'Liga Profesional': 'ARG', 'Saudi Pro League': 'KSA',
     'Danish Superliga': 'DEN'
 } %}
@@ -39,8 +129,7 @@
         <button class="x" type="button" onclick="toggleDrawer()" aria-label="Close">×</button>
         <h3>Quick Links</h3>
         <button class="dl" type="button" onclick="goTab('matches')">📅 All Matches</button>
-        <button class="dl" type="button" onclick="goTab('corners')">🚩 Corners</button>
-        <button class="dl" type="button" onclick="goTab('ht')">⏱ HT O/U 1.5</button>
+        <button class="dl" type="button" onclick="goTab('acca')">🎯 Acca</button>
         <button class="dl" type="button" onclick="goTab('btts')">⚽ BTTS</button>
         <button class="dl" type="button" onclick="goTab('results')">📋 Results</button>
         <button class="dl" type="button" onclick="goTab('single')">🔍 Single Match</button>
@@ -52,14 +141,11 @@
             <button class="tab active" data-tab="matches" onclick="switchTab('matches', this)">
                 📅 All Matches <span class="badge-count">{{ all_matches|length }}</span>
             </button>
-            <button class="tab" data-tab="corners" onclick="switchTab('corners', this)">
-                🚩 Corners <span class="badge-count">{{ corner_rows|length }}</span>
-            </button>
-            <button class="tab" data-tab="ht" onclick="switchTab('ht', this)">
-                ⏱ HT O/U 1.5 <span class="badge-count">{{ ht_rows|length }}</span>
-            </button>
             <button class="tab" data-tab="btts" onclick="switchTab('btts', this)">
                 ⚽ BTTS <span class="badge-count">{{ btts_rows|length }}</span>
+            </button>
+            <button class="tab" data-tab="acca" onclick="switchTab('acca', this)">
+                🎯 Acca
             </button>
             <button class="tab" data-tab="results" onclick="switchTab('results', this)">
                 📋 Results <span class="badge-count">{{ results|length }}</span>
@@ -89,6 +175,7 @@
                 </div>
                 <div class="hint" style="text-align:center;">
                     Odds & picks updated {{ picks_last_updated }} · data {{ last_fetch }} · times in EAT (Nairobi)
+                    {% if automation.xg.matches %}· real xG on {{ automation.xg.pct }}% of matches{% endif %}
                 </div>
 
                 <div class="sec-bar">Football Predictions · Over / Under 2.5</div>
@@ -174,164 +261,6 @@
             {% endif %}
         </section>
 
-        <!-- ================= CORNERS ================= -->
-        <section id="corners" class="panel">
-            <div class="pill-title"><span>Corners · Over / Under {{ corner_info.line }}</span></div>
-
-            {% if corner_info.ready %}
-                <div class="hint" style="margin:-6px 0 12px;">
-                    Expected corners from {{ corner_info.n_matches }} matches with corner data
-                    (average {{ corner_info.avg_total|round(1) }} per match, {{ (corner_info.base_over*100)|round(0)|int }}% went over {{ corner_info.line }})
-                </div>
-
-                {% if corner_rows %}
-                    <div class="seg" id="cDateFilter">
-                        <button class="date-btn" data-date="all" onclick="filterDate('corners', 'all', this)">
-                            All <span class="dc">{{ corner_rows|length }}</span>
-                        </button>
-                    </div>
-                    <div class="date-headline" id="cDateHeadline"></div>
-
-                    <div class="sec-bar">Corner Predictions · Over / Under {{ corner_info.line }}</div>
-                    <div class="mlist" id="cornerList">
-                        <div class="mhead">
-                            <span class="c">League</span>
-                            <span>Match</span>
-                            <span class="c">Tip</span>
-                            <span class="c">Prob</span>
-                            <span class="c hide-sm">Exp. total</span>
-                            <span class="c hide-sm">Home – Away</span>
-                            <span class="c hide-md">Over / Under</span>
-                            <span></span>
-                        </div>
-
-                        {% for r in corner_rows %}
-                            <div class="mrow" data-match-date="{{ r.date|eat_date }}" onclick="toggleRow(this)">
-                                <div class="mleague">
-                                    <span class="lgcode">{{ LG.get(r.league_name, r.league_name[:3]|upper) }}</span>
-                                    <span class="ko">{{ r.date|eat_time }}</span>
-                                </div>
-                                <div class="mteams">
-                                    <span class="t">{{ r.home }}</span>
-                                    <span class="t">{{ r.away }}</span>
-                                </div>
-                                <div class="mtip {{ 'over' if r.is_over else 'under' }}">
-                                    {{ r.pick|upper }}
-                                    <span class="tier {{ r.tier }}">{{ r.tier }}</span>
-                                </div>
-                                <div class="mprob">{{ (r.prob*100)|round(1) }}%</div>
-                                <div class="modds hide-sm">{{ r.mu_t }}</div>
-                                <div class="mxg hide-sm">{{ r.mu_h }} – {{ r.mu_a }}</div>
-                                <div class="mscore hide-md">{{ (r.p_over*100)|round(0)|int }}% / {{ (r.p_under*100)|round(0)|int }}%</div>
-                                <button class="mstat" type="button" aria-label="Details">▾</button>
-
-                                <div class="mdetail">
-                                    <div><div class="k">Over {{ r.line }}</div><div class="v over">{{ (r.p_over*100)|round(1) }}%</div></div>
-                                    <div><div class="k">Under {{ r.line }}</div><div class="v under">{{ (r.p_under*100)|round(1) }}%</div></div>
-                                    <div><div class="k">Expected corners</div><div class="v">{{ r.mu_h }} + {{ r.mu_a }} = {{ r.mu_t }}</div></div>
-                                    <div><div class="k">Kickoff</div><div class="v">{{ r.date|eat_full }} EAT</div></div>
-                                    <div><div class="k">{{ r.home }} (last 10)</div><div class="v">wins {{ r.h_for }} · concedes {{ r.h_against }}</div></div>
-                                    <div><div class="k">{{ r.away }} (last 10)</div><div class="v">wins {{ r.a_for }} · concedes {{ r.a_against }}</div></div>
-                                    <div><div class="k">Data (matches H / A)</div><div class="v">{{ r.home_n }} / {{ r.away_n }}</div></div>
-                                    <div><div class="k">League</div><div class="v">{{ r.league_name }}</div></div>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-                    <div class="no-filter-results" id="cNoFilter">No matches on this date.</div>
-                    <div class="hint" style="margin-top:10px;">
-                        {% if corner_info.skipped %}{{ corner_info.skipped }} fixture(s) hidden: a team has fewer than 8 matches with corner data. {% endif %}
-                        Unvalidated until you run <code>python corners_backtest.py</code>.
-                    </div>
-                {% else %}
-                    <div class="empty">No upcoming matches with enough corner data.<br>
-                        <span class="hint">{{ corner_info.skipped }} fixture(s) skipped — run <code>python corners_data.py</code> to fetch more history.</span></div>
-                {% endif %}
-            {% else %}
-                <div class="empty">{{ corner_info.message }}</div>
-            {% endif %}
-        </section>
-
-        <!-- ================= HALF-TIME O/U 1.5 ================= -->
-        <section id="ht" class="panel">
-            <div class="pill-title"><span>First Half Goals · Over / Under {{ ht_info.line }}</span></div>
-
-            {% if ht_info.ready %}
-                <div class="hint" style="margin:-6px 0 12px;">
-                    Expected first-half goals from {{ ht_info.n_matches }} matches with a half-time score
-                    (average {{ ht_info.avg_total|round(2) }} per match, {{ (ht_info.base_over*100)|round(0)|int }}% went over {{ ht_info.line }})
-                </div>
-
-                {% if ht_rows %}
-                    <div class="seg" id="hDateFilter">
-                        <button class="date-btn" data-date="all" onclick="filterDate('ht', 'all', this)">
-                            All <span class="dc">{{ ht_rows|length }}</span>
-                        </button>
-                    </div>
-                    <div class="date-headline" id="hDateHeadline"></div>
-
-                    <div class="sec-bar">First-Half Goals · Over / Under {{ ht_info.line }}</div>
-                    <div class="mlist" id="htList">
-                        <div class="mhead">
-                            <span class="c">League</span>
-                            <span>Match</span>
-                            <span class="c">Tip</span>
-                            <span class="c">Prob</span>
-                            <span class="c hide-sm">Exp. 1H goals</span>
-                            <span class="c hide-sm">Home – Away</span>
-                            <span class="c hide-md">Top score</span>
-                            <span></span>
-                        </div>
-
-                        {% for r in ht_rows %}
-                            <div class="mrow" data-match-date="{{ r.date|eat_date }}" onclick="toggleRow(this)">
-                                <div class="mleague">
-                                    <span class="lgcode">{{ LG.get(r.league_name, r.league_name[:3]|upper) }}</span>
-                                    <span class="ko">{{ r.date|eat_time }}</span>
-                                </div>
-                                <div class="mteams">
-                                    <span class="t">{{ r.home }}</span>
-                                    <span class="t">{{ r.away }}</span>
-                                </div>
-                                <div class="mtip {{ 'over' if r.is_over else 'under' }}">
-                                    {{ r.pick|upper }}
-                                    <span class="tier {{ r.tier }}">{{ r.tier }}</span>
-                                </div>
-                                <div class="mprob">{{ (r.prob*100)|round(1) }}%</div>
-                                <div class="modds hide-sm">{{ r.mu_t }}</div>
-                                <div class="mxg hide-sm">{{ r.mu_h }} – {{ r.mu_a }}</div>
-                                <div class="mscore hide-md">{{ r.top_2_scores[0].score if r.top_2_scores else "—" }}</div>
-                                <button class="mstat" type="button" aria-label="Details">▾</button>
-
-                                <div class="mdetail">
-                                    <div><div class="k">Over {{ r.line }}</div><div class="v over">{{ (r.p_over*100)|round(1) }}%</div></div>
-                                    <div><div class="k">Under {{ r.line }}</div><div class="v under">{{ (r.p_under*100)|round(1) }}%</div></div>
-                                    <div><div class="k">Expected 1H goals</div><div class="v">{{ r.mu_h }} + {{ r.mu_a }} = {{ r.mu_t }}</div></div>
-                                    <div><div class="k">Top 2 HT scores</div>
-                                        <div class="v">{% for s in r.top_2_scores %}{{ s.score }} {{ s.prob }}%{% if not loop.last %} · {% endif %}{% endfor %}</div></div>
-                                    <div><div class="k">Kickoff</div><div class="v">{{ r.date|eat_full }} EAT</div></div>
-                                    <div><div class="k">{{ r.home }} (last 10 HT)</div><div class="v">scores {{ r.h_for }} · concedes {{ r.h_against }}</div></div>
-                                    <div><div class="k">{{ r.away }} (last 10 HT)</div><div class="v">scores {{ r.a_for }} · concedes {{ r.a_against }}</div></div>
-                                    <div><div class="k">Data (HT matches H / A)</div><div class="v">{{ r.home_n }} / {{ r.away_n }}</div></div>
-                                    <div><div class="k">League</div><div class="v">{{ r.league_name }}</div></div>
-                                </div>
-                            </div>
-                        {% endfor %}
-                    </div>
-                    <div class="no-filter-results" id="hNoFilter">No matches on this date.</div>
-                    <div class="hint" style="margin-top:10px;">
-                        {% if ht_info.skipped %}{{ ht_info.skipped }} fixture(s) hidden: a team has fewer than 8 matches with a half-time score. {% endif %}
-                        Unvalidated until you run <code>python ht_backtest.py</code>.
-                    </div>
-                {% else %}
-                    <div class="empty">No upcoming matches with enough half-time data.<br>
-                        <span class="hint">{{ ht_info.skipped }} fixture(s) skipped — run <code>python ht_data.py</code> to fetch more half-time scores.</span></div>
-                {% endif %}
-            {% else %}
-                <div class="empty">{{ ht_info.message }}</div>
-            {% endif %}
-        </section>
-
         <!-- ================= BTTS ================= -->
         <section id="btts" class="panel">
             <div class="pill-title"><span>Both Teams To Score · Yes / No</span></div>
@@ -407,6 +336,59 @@
             {% endif %}
         </section>
 
+        <!-- ================= ACCA ================= -->
+        <section id="acca" class="panel">
+            <div class="pill-title"><span>Acca Builder</span></div>
+            <div class="hint" style="margin:-6px 0 12px;">
+                Pick a market. You get the <b>most probable</b> combination of {{ acca_cfg.min_legs }} or {{ acca_cfg.max_legs }} selections whose combined odds
+                reach {{ '%.2f'|format(acca_cfg.min_combined) }}, using <b>real bookmaker odds only</b> (never model-made prices).
+                If the very most probable picks pay too little, it scales down to the most probable combination that does reach the target.
+                It uses today's saved fixtures, so it makes no API requests.
+            </div>
+
+            {% if acca_days and acca_cfg.markets %}
+                <div class="acca-lbl">Day</div>
+                <div class="seg" id="accaDay">
+                    {% for d in acca_days %}
+                        <button type="button" class="{% if loop.first %}active{% endif %}" data-day="{{ d.iso }}">{{ d.label }} <span class="dc">{{ d.count }}</span></button>
+                    {% endfor %}
+                </div>
+
+                <div class="acca-lbl">Market to focus on</div>
+                <div class="seg" id="accaMarket">
+                    {% for m in acca_cfg.markets %}
+                        <button type="button" class="{% if loop.first %}active{% endif %}" data-market="{{ m.key }}">{{ m.title }}</button>
+                    {% endfor %}
+                </div>
+
+                <div class="acca-lbl">Side</div>
+                <div class="seg" id="accaSide"></div>
+
+                <div class="acca-lbl">Matches in the acca</div>
+                <div class="seg" id="accaLegs">
+                    <button type="button" class="active" data-legs="auto">Best of {{ acca_cfg.min_legs }}–{{ acca_cfg.max_legs }}</button>
+                    {% for n in range(acca_cfg.min_legs, acca_cfg.max_legs + 1) %}
+                        <button type="button" data-legs="{{ n }}">{{ n }} matches</button>
+                    {% endfor %}
+                </div>
+
+                <div class="acca-grid">
+                    <div><label for="accaCombined">Min combined odds</label>
+                        <input type="number" id="accaCombined" inputmode="decimal" min="1.01" step="0.1" value="{{ '%.2f'|format(acca_cfg.min_combined) }}"></div>
+                    <div><label for="accaProb">Min model probability %</label>
+                        <input type="number" id="accaProb" inputmode="decimal" min="0" max="99" step="1" value="{{ acca_cfg.min_prob }}"></div>
+                    <div><label for="accaOdds">Min odds per leg</label>
+                        <input type="number" id="accaOdds" inputmode="decimal" min="1" step="0.05" value="{{ acca_cfg.min_odds }}"></div>
+                </div>
+
+                <button class="primary" type="button" id="accaGo">Build acca</button>
+                <div id="accaOut" aria-live="polite"></div>
+            {% else %}
+                <div class="empty">No upcoming fixtures are loaded yet.<br>
+                    <span class="hint">Tap ↻ Refresh once the API quota is available, then come back here.</span></div>
+            {% endif %}
+        </section>
+
         <!-- ================= RESULTS ================= -->
         <section id="results" class="panel">
             <div class="pill-title"><span>Results</span></div>
@@ -418,150 +400,93 @@
             </div>
 
             {% if results %}
-                {% set with_pred = results | selectattr('prediction') | list %}
-                {% set with_pred_count = with_pred | length %}
-                {% if with_pred_count > 0 %}
-                    {% set o_u_wins = with_pred | selectattr('prediction.over_hit') | list | length %}
-                    {% set top1_wins = with_pred | selectattr('prediction.top1_hit') | list | length %}
-                    {# Top-2 = actual score matched EITHER the top pick or the alt pick (always different scores) #}
-                    {% set top2_wins = top1_wins + (with_pred | selectattr('prediction.top2_hit') | list | length) %}
-                    {% set o_u_pct = (o_u_wins / with_pred_count * 100) | round(1) %}
-                    {% set top1_pct = (top1_wins / with_pred_count * 100) | round(1) %}
-                    {% set top2_pct = (top2_wins / with_pred_count * 100) | round(1) %}
-                    <div class="rsum">
-                        <div class="rs"><div class="k">Over/Under hit</div>
-                            <div class="v {% if o_u_pct >= 55 %}good{% elif o_u_pct < 50 %}bad{% endif %}">{{ o_u_pct }}%</div>
-                            <div class="s">{{ o_u_wins }} / {{ with_pred_count }}</div></div>
-                        <div class="rs"><div class="k">Top-1 score</div>
-                            <div class="v {% if top1_pct >= 15 %}good{% endif %}">{{ top1_pct }}%</div>
-                            <div class="s">{{ top1_wins }} / {{ with_pred_count }}</div></div>
-                        <div class="rs"><div class="k">Top-2 score</div>
-                            <div class="v {% if top2_pct >= 25 %}good{% endif %}">{{ top2_pct }}%</div>
-                            <div class="s">{{ top2_wins }} / {{ with_pred_count }}</div></div>
-                    </div>
-                {% endif %}
-                {% if rx and (rx.ht_ou[1] or rx.corners[1] or rx.btts[1]) %}
-                    <div class="rsum">
-                        {% if rx.ht_ou[1] %}
-                            {% set hp = (rx.ht_ou[0] / rx.ht_ou[1] * 100) | round(1) %}
-                            <div class="rs"><div class="k">HT O/U 1.5 hit</div>
-                                <div class="v {% if hp >= 55 %}good{% elif hp < 50 %}bad{% endif %}">{{ hp }}%</div>
-                                <div class="s">{{ rx.ht_ou[0] }} / {{ rx.ht_ou[1] }}</div></div>
-                            {% set h1 = (rx.ht_top1[0] / rx.ht_top1[1] * 100) | round(1) %}
-                            {% set h2 = (rx.ht_top2[0] / rx.ht_top2[1] * 100) | round(1) %}
-                            <div class="rs"><div class="k">HT top-1 score</div>
-                                <div class="v {% if h1 >= 25 %}good{% endif %}">{{ h1 }}%</div>
-                                <div class="s">{{ rx.ht_top1[0] }} / {{ rx.ht_top1[1] }}</div></div>
-                            <div class="rs"><div class="k">HT top-2 score</div>
-                                <div class="v {% if h2 >= 40 %}good{% endif %}">{{ h2 }}%</div>
-                                <div class="s">{{ rx.ht_top2[0] }} / {{ rx.ht_top2[1] }}</div></div>
-                        {% endif %}
-                        {% if rx.btts[1] %}
-                            {% set bp = (rx.btts[0] / rx.btts[1] * 100) | round(1) %}
-                            <div class="rs"><div class="k">BTTS hit</div>
-                                <div class="v {% if bp >= 55 %}good{% elif bp < 50 %}bad{% endif %}">{{ bp }}%</div>
-                                <div class="s">{{ rx.btts[0] }} / {{ rx.btts[1] }}</div></div>
-                        {% endif %}
-                        {% if rx.corners[1] %}
-                            {% set cp = (rx.corners[0] / rx.corners[1] * 100) | round(1) %}
-                            <div class="rs"><div class="k">Corners hit</div>
-                                <div class="v {% if cp >= 55 %}good{% elif cp < 50 %}bad{% endif %}">{{ cp }}%</div>
-                                <div class="s">{{ rx.corners[0] }} / {{ rx.corners[1] }}</div></div>
-                        {% endif %}
-                    </div>
-                {% endif %}
-
-                <div class="rgrid">
-                    {% set ns = namespace(current_date='') %}
-                    {% for r in results %}
-                        {% if r.date_key != ns.current_date %}
-                            {% set ns.current_date = r.date_key %}
-                            <div class="rday">
-                                <h3>{{ r.date_label }}</h3>
-                                <span>{{ results | selectattr('date_key', 'equalto', r.date_key) | list | length }} matches</span>
-                            </div>
-                        {% endif %}
-
-                        <div class="rcard {% if r.over_hit %}over{% endif %}" data-result-date="{{ r.date_key }}">
-                            <div class="rc-top"><b>{{ r.league_name }}</b><span>{{ r.time_label }}</span></div>
-                            <div class="rc-teams">{{ r.home }} vs {{ r.away }}</div>
-
-                            <div class="rc-cols">
-                                <div class="rc-box">
-                                    <h4>Predicted</h4>
-                                    {% if r.prediction %}
-                                        <div class="rc-line">
-                                            <span><b class="{{ 'over' if r.prediction.over_pick == 'Over 2.5' else 'under' }}">{{ r.prediction.over_pick }}</b> ({{ r.prediction.over_prob }}%)</span>
-                                            <span class="verdict {{ 'won' if r.prediction.over_hit else 'lost' }}">{{ '✓ WON' if r.prediction.over_hit else '✗ LOST' }}</span>
-                                        </div>
-                                        <div class="rc-line">
-                                            <span>Top {{ r.prediction.top1_score }} ({{ r.prediction.top1_prob }}%)</span>
-                                            <span class="verdict {{ 'won' if r.prediction.top1_hit else 'lost' }}">{{ '✓ WON' if r.prediction.top1_hit else '✗ LOST' }}</span>
-                                        </div>
-                                        <div class="rc-line">
-                                            <span>Alt {{ r.prediction.top2_score }} ({{ r.prediction.top2_prob }}%)</span>
-                                            <span class="verdict {{ 'won' if r.prediction.top2_hit else 'lost' }}">{{ '✓ WON' if r.prediction.top2_hit else '✗ LOST' }}</span>
-                                        </div>
-                                    {% else %}
-                                        <div class="hint"><i>No prediction available</i></div>
-                                    {% endif %}
-                                    {% if r.ht and r.ht.has_pred %}
-                                        <div class="rc-line">
-                                            <span><b class="{{ 'over' if r.ht.pick.startswith('Over') else 'under' }}">{{ r.ht.pick }}</b> ({{ r.ht.prob }}%)</span>
-                                            {% if r.ht.has_actual %}<span class="verdict {{ 'won' if r.ht.hit else 'lost' }}">{{ '✓ WON' if r.ht.hit else '✗ LOST' }}</span>
-                                            {% else %}<span class="verdict pend">No result</span>{% endif %}
-                                        </div>
-                                        <div class="rc-line">
-                                            <span>HT top {{ r.ht.top1_score }} ({{ r.ht.top1_prob }}%)</span>
-                                            {% if r.ht.has_actual %}<span class="verdict {{ 'won' if r.ht.top1_hit else 'lost' }}">{{ '✓ WON' if r.ht.top1_hit else '✗ LOST' }}</span>{% endif %}
-                                        </div>
-                                        <div class="rc-line">
-                                            <span>HT alt {{ r.ht.top2_score }} ({{ r.ht.top2_prob }}%)</span>
-                                            {% if r.ht.has_actual %}<span class="verdict {{ 'won' if r.ht.top2_hit else 'lost' }}">{{ '✓ WON' if r.ht.top2_hit else '✗ LOST' }}</span>{% endif %}
-                                        </div>
-                                    {% endif %}
-                                    {% if r.btts and r.btts.has_pred %}
-                                        <div class="rc-line">
-                                            <span><b class="{{ 'over' if r.btts.pick == 'BTTS Yes' else 'under' }}">{{ r.btts.pick }}</b> ({{ r.btts.prob }}%)</span>
-                                            {% if r.btts.has_actual %}<span class="verdict {{ 'won' if r.btts.hit else 'lost' }}">{{ '✓ WON' if r.btts.hit else '✗ LOST' }}</span>
-                                            {% else %}<span class="verdict pend">No result</span>{% endif %}
-                                        </div>
-                                    {% endif %}
-                                    {% if r.corners and r.corners.has_pred %}
-                                        <div class="rc-line">
-                                            <span><b class="{{ 'over' if r.corners.pick.startswith('Over') else 'under' }}">Corners {{ r.corners.pick }}</b> ({{ r.corners.prob }}%)</span>
-                                            {% if r.corners.has_actual %}<span class="verdict {{ 'won' if r.corners.hit else 'lost' }}">{{ '✓ WON' if r.corners.hit else '✗ LOST' }}</span>
-                                            {% else %}<span class="verdict pend">No result</span>{% endif %}
-                                        </div>
-                                    {% endif %}
-                                </div>
-
-                                <div class="rc-box">
-                                    <h4>Actual</h4>
-                                    <div class="rc-score">{{ r.score }}</div>
-                                    <div class="rc-meta {{ 'over' if r.over_hit else 'under' }}">
-                                        {{ r.total }} goals · {{ 'Over 2.5' if r.over_hit else 'Under 2.5' }}
-                                    </div>
-                                    {% if r.ht and r.ht.has_actual %}
-                                        <div class="rc-meta {{ 'over' if r.ht.actual_over else 'under' }}">
-                                            HT {{ r.ht.score }} · {{ r.ht.total }} goals · {{ 'Over' if r.ht.actual_over else 'Under' }} {{ r.ht.line }}
-                                        </div>
-                                    {% endif %}
-                                    {% if r.btts and r.btts.has_actual %}
-                                        <div class="rc-meta {{ 'over' if r.btts.actual_yes else 'under' }}">
-                                            BTTS {{ 'Yes' if r.btts.actual_yes else 'No' }} · {{ r.btts.ah }}-{{ r.btts.aa }}
-                                        </div>
-                                    {% endif %}
-                                    {% if r.corners and r.corners.has_actual %}
-                                        <div class="rc-meta {{ 'over' if r.corners.actual_over else 'under' }}">
-                                            Corners {{ r.corners.ah }}-{{ r.corners.aa }} · {{ r.corners.total }} · {{ 'Over' if r.corners.actual_over else 'Under' }} {{ r.corners.line }}
-                                        </div>
-                                    {% endif %}
-                                </div>
-                            </div>
+                {# Scoreboard: one bar per SIDE the model picked (wins / picks made). Bars turn green >= 55%, red < 50% once a side has 10+ picks. #}
+                {% macro srow(label, tl) %}
+                    {% if tl[1] %}
+                        {% set pct = (tl[0] / tl[1] * 100) | round(1) %}
+                        <div class="sr"><span>{{ label }}</span>
+                            <span class="sbar"><i class="{% if tl[1] >= 10 %}{% if pct >= 55 %}g{% elif pct < 50 %}r{% endif %}{% endif %}" style="width:{{ pct }}%"></i></span>
+                            <b>{{ pct }}%</b><small>{{ tl[0] }}/{{ tl[1] }}</small></div>
+                    {% else %}
+                        <div class="sr none"><span>{{ label }}</span><span class="sbar"></span><b>—</b><small>no picks</small></div>
+                    {% endif %}
+                {% endmacro %}
+                {% set sd = rx.by_side if rx else none %}
+                {% if sd %}
+                    <div class="sb">
+                        <div>
+                            <div class="sb-h">Over / Under 2.5</div>
+                            {{ srow('Over 2.5', sd.ou25.Over) }}
+                            {{ srow('Under 2.5', sd.ou25.Under) }}
                         </div>
-                    {% endfor %}
-                </div>
+                        <div>
+                            <div class="sb-h">Both teams to score</div>
+                            {{ srow('BTTS Yes', sd.btts.Yes) }}
+                            {{ srow('BTTS No', sd.btts.No) }}
+                        </div>
+                        {% if rx.top1[1] %}
+                            <div class="sb-foot">Hit rate of the model's picks by side (wins / picks made) · exact score: the most likely scoreline came in
+                                {{ (rx.top1[0] / rx.top1[1] * 100) | round(1) }}%, the top two {{ (rx.top2[0] / rx.top2[1] * 100) | round(1) }}% of {{ rx.top1[1] }} matches</div>
+                        {% endif %}
+                    </div>
+                {% endif %}
+
+                {% set ns = namespace(current_date='', open=false) %}
+                {% for r in results %}
+                    {% if r.date_key != ns.current_date %}
+                        {% if ns.open %}</div>{% endif %}
+                        {% set ns.current_date = r.date_key %}
+                        {% set ns.open = true %}
+                        {% set day = results | selectattr('date_key', 'equalto', r.date_key) | list %}
+                        {% set ou_n = day | selectattr('prediction') | list | length %}
+                        {% set ou_w = day | selectattr('prediction') | selectattr('prediction.over_hit') | list | length %}
+                        {% set bt_n = day | selectattr('btts') | selectattr('btts.has_actual') | list | length %}
+                        {% set bt_w = day | selectattr('btts') | selectattr('btts.hit') | list | length %}
+                        <div class="rday2">
+                            <h3>{{ r.date_label }}</h3>
+                            <span>{{ day | length }} matches</span>
+                            <span class="rec">{% if ou_n %}Over/Under {{ ou_w }}/{{ ou_n }}{% endif %}{% if ou_n and bt_n %} · {% endif %}{% if bt_n %}BTTS {{ bt_w }}/{{ bt_n }}{% endif %}</span>
+                        </div>
+                        <div class="rl">
+                    {% endif %}
+
+                    {% set g = r.score.split('-') %}
+                    <div class="rrow" data-result-date="{{ r.date_key }}" onclick="toggleRow(this)">
+                        <div class="rr-when">
+                            <span class="lgcode">{{ LG.get(r.league_name, r.league_name[:3]|upper) }}</span>
+                            <span class="ko">{{ r.time_label }}</span>
+                        </div>
+                        <div class="rr-teams">
+                            <div class="rr-t {{ 'lo' if g[0]|int < g[1]|int else '' }}"><span class="n">{{ r.home }}</span><b>{{ g[0] }}</b></div>
+                            <div class="rr-t {{ 'lo' if g[1]|int < g[0]|int else '' }}"><span class="n">{{ r.away }}</span><b>{{ g[1] }}</b></div>
+                        </div>
+                        <div class="rr-picks">
+                            {% if r.prediction %}
+                                <span class="pk {{ 'w' if r.prediction.over_hit else 'l' }}"><i>{{ '✓' if r.prediction.over_hit else '✗' }}</i>{{ r.prediction.over_pick }} <small>{{ r.prediction.over_prob }}%</small></span>
+                            {% endif %}
+                            {% if r.btts and r.btts.has_pred %}
+                                {% if r.btts.has_actual %}
+                                    <span class="pk {{ 'w' if r.btts.hit else 'l' }}"><i>{{ '✓' if r.btts.hit else '✗' }}</i>{{ r.btts.pick }} <small>{{ r.btts.prob }}%</small></span>
+                                {% else %}
+                                    <span class="pk p">{{ r.btts.pick }} <small>{{ r.btts.prob }}%</small></span>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                        <button class="mstat" type="button" aria-label="Details">▾</button>
+                        <div class="rr-detail">
+                            <div><span class="k">Final</span>{{ r.score }} · {{ r.total }} goals · {{ 'Over 2.5' if r.over_hit else 'Under 2.5' }}</div>
+                            {% if r.btts and r.btts.has_actual %}
+                                <div><span class="k">Both teams to score</span>{{ 'Yes' if r.btts.actual_yes else 'No' }}</div>
+                            {% endif %}
+                            {% if r.prediction %}
+                                <div><span class="k">Most likely scorelines</span>
+                                    {{ r.prediction.top1_score }} ({{ r.prediction.top1_prob }}%) <span class="{{ 'y' if r.prediction.top1_hit else 'x' }}">{{ '✓' if r.prediction.top1_hit else '✗' }}</span>
+                                    · {{ r.prediction.top2_score }} ({{ r.prediction.top2_prob }}%) <span class="{{ 'y' if r.prediction.top2_hit else 'x' }}">{{ '✓' if r.prediction.top2_hit else '✗' }}</span></div>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% endfor %}
+                {% if ns.open %}</div>{% endif %}
             {% else %}
                 <div class="empty">No finished matches in the last {{ results_days }} days.<br>
                     <span class="hint">Try a longer range above, or refresh data.</span></div>
@@ -581,13 +506,10 @@
             <div class="date-headline" id="datePickHeadline"></div>
             <div class="sec-bar" id="datePickGoalsBar" style="display:none;">Football Predictions · Over / Under 2.5</div>
             <div class="mlist" id="datePickMatches"></div>
-            <div class="sec-bar" id="datePickCornersBar" style="display:none;">Corners Predictions</div>
-            <div class="mlist" id="datePickCorners"></div>
             <div class="sec-bar" id="datePickBttsBar" style="display:none;">Both Teams To Score · Yes / No</div>
             <div class="mlist" id="datePickBtts"></div>
-            <div class="sec-bar" id="datePickHtBar" style="display:none;">First-Half Goals · Over / Under 1.5</div>
-            <div class="mlist" id="datePickHt"></div>
-            <div class="rgrid" id="datePickResults"></div>
+            <div class="sec-bar" id="datePickResultsBar" style="display:none;">Results</div>
+            <div class="rl" id="datePickResults" style="display:none;"></div>
             <div class="no-filter-results" id="datePickNone">No matches or results on this date.</div>
         </section>
 
@@ -596,26 +518,31 @@
             <div class="single">
                 <div class="pill-title"><span>Single Match</span></div>
                 <form method="POST" action="/?tab=single">
-                    <label for="lg">League</label>
-                    <select id="lg" name="league_id">
-                        {% for lid, lname in leagues %}
-                            <option value="{{ lid }}" {% if lid == league_id %}selected{% endif %}>{{ lname }}</option>
-                        {% endfor %}
-                    </select>
-                    <label for="homeSel">Home Team</label>
-                    <select id="homeSel" name="home_team" required>
-                        <option value="">Select home team</option>
-                        {% for n in teams_by_league.get(league_id|string, []) %}
-                            <option value="{{ n }}" {% if n == home_input %}selected{% endif %}>{{ n }}</option>
-                        {% endfor %}
-                    </select>
-                    <label for="awaySel">Away Team</label>
-                    <select id="awaySel" name="away_team" required>
-                        <option value="">Select away team</option>
-                        {% for n in teams_by_league.get(league_id|string, []) %}
-                            <option value="{{ n }}" {% if n == away_input %}selected{% endif %}>{{ n }}</option>
-                        {% endfor %}
-                    </select>
+                    <label for="lgInput">League</label>
+                    <div class="picker ro" id="lgPicker">
+                        <input type="hidden" name="league_id" id="lgValue" value="{{ league_id }}">
+                        <input type="text" id="lgInput" class="picker-input" readonly placeholder="Select league"
+                               aria-haspopup="listbox" autocomplete="off">
+                        <ul class="picker-list" role="listbox" hidden></ul>
+                    </div>
+
+                    <label for="homeInput">Home Team</label>
+                    <div class="picker" id="homePicker">
+                        <input type="text" id="homeInput" name="home_team" class="picker-input" value="{{ home_input }}"
+                               placeholder="Tap to pick, or type to search" required aria-haspopup="listbox"
+                               autocomplete="off" autocapitalize="off" spellcheck="false">
+                        <button type="button" class="picker-clear" aria-label="Clear home team" hidden>×</button>
+                        <ul class="picker-list" role="listbox" hidden></ul>
+                    </div>
+
+                    <label for="awayInput">Away Team</label>
+                    <div class="picker" id="awayPicker">
+                        <input type="text" id="awayInput" name="away_team" class="picker-input" value="{{ away_input }}"
+                               placeholder="Tap to pick, or type to search" required aria-haspopup="listbox"
+                               autocomplete="off" autocapitalize="off" spellcheck="false">
+                        <button type="button" class="picker-clear" aria-label="Clear away team" hidden>×</button>
+                        <ul class="picker-list" role="listbox" hidden></ul>
+                    </div>
                     <button class="primary" type="submit">Predict</button>
                 </form>
 
@@ -663,7 +590,7 @@
                                     {% endif %}
                                 </div>
 
-                                <div class="hint" style="margin-top:10px;">All markets, highest probability first:</div>
+                                <div class="hint" style="margin-top:10px;">Over/Under 2.5 and BTTS, highest probability first:</div>
                                 {% for i in result.ranked %}
                                     <div class="row">
                                         <span class="label">{{ loop.index }}. {{ i.pick }}
@@ -676,9 +603,8 @@
                                     </div>
                                 {% endfor %}
                                 <div class="hint" style="margin-top:6px;">
-                                    Ranked by the model's probability for each pick. Markets differ in how reliable they are
-                                    (backtests: BTTS and half-time are well calibrated; 58% picks are close to coin-flips),
-                                    so check the real price (EV) before acting.
+                                    Ranked by the model's probability for each pick. BTTS is well calibrated in backtests;
+                                    58% picks are close to coin-flips, so check the real price (EV) before acting.
                                 </div>
                             {% endif %}
 
@@ -713,49 +639,10 @@
                                     <span class="value">{{ result.btts.pick }} · {{ (result.btts.prob*100)|round(1) }}% <span class="tier {{ result.btts.tier }}">{{ result.btts.tier }}</span></span></div>
                             {% endif %}
 
-                            {% if result.ht %}
-                                <h2 style="margin-top:14px;">⏱ First half · Over / Under {{ result.ht.line if result.ht.ok else '1.5' }}</h2>
-                                {% if result.ht.ok %}
-                                    <div class="row"><span class="label">Expected 1H goals</span>
-                                        <span class="value">{{ result.ht.mu_h }} – {{ result.ht.mu_a }} ({{ result.ht.mu_t }})</span></div>
-                                    <div class="row"><span class="label">Over {{ result.ht.line }}</span>
-                                        <span class="value over">{{ result.ht.p_over }}%</span></div>
-                                    <div class="row"><span class="label">Under {{ result.ht.line }}</span>
-                                        <span class="value under">{{ result.ht.p_under }}%</span></div>
-                                    {{ odds_row('Over ' ~ result.ht.line ~ ' HT', result.ht.p_over, none) }}
-                                    {{ odds_row('Under ' ~ result.ht.line ~ ' HT', result.ht.p_under, none) }}
-                                    <div class="row"><span class="label">Pick</span>
-                                        <span class="value">{{ result.ht.pick }} · {{ result.ht.prob }}% <span class="tier {{ result.ht.tier }}">{{ result.ht.tier }}</span></span></div>
-                                    <div class="row"><span class="label">Most likely HT scores</span>
-                                        <span class="value">{% for s in result.ht.top_scores %}{{ s.score }} {{ s.prob }}%{% if not loop.last %} · {% endif %}{% endfor %}</span></div>
-                                {% else %}
-                                    <div class="hint">{{ result.ht.message }}</div>
-                                {% endif %}
-                            {% endif %}
-
-                            {% if result.corners %}
-                                <h2 style="margin-top:14px;">🚩 Corners · Over / Under {{ result.corners.line if result.corners.ok else '8.5' }}</h2>
-                                {% if result.corners.ok %}
-                                    <div class="row"><span class="label">Expected corners</span>
-                                        <span class="value">{{ result.corners.mu_h }} – {{ result.corners.mu_a }} ({{ result.corners.mu_t }})</span></div>
-                                    <div class="row"><span class="label">Over {{ result.corners.line }}</span>
-                                        <span class="value over">{{ result.corners.p_over }}%</span></div>
-                                    <div class="row"><span class="label">Under {{ result.corners.line }}</span>
-                                        <span class="value under">{{ result.corners.p_under }}%</span></div>
-                                    {{ odds_row('Over ' ~ result.corners.line, result.corners.p_over, none) }}
-                                    {{ odds_row('Under ' ~ result.corners.line, result.corners.p_under, none) }}
-                                    <div class="row"><span class="label">Pick</span>
-                                        <span class="value">{{ result.corners.pick }} · {{ result.corners.prob }}% <span class="tier {{ result.corners.tier }}">{{ result.corners.tier }}</span></span></div>
-                                {% else %}
-                                    <div class="hint">{{ result.corners.message }}</div>
-                                {% endif %}
-                            {% endif %}
-
                             <div class="hint" style="margin-top:12px;">
                                 <b>Real</b> = bookmaker price from today's saved picks
                                 {% if result.real %}(fixture found, kickoff {{ result.real.kickoff|eat_full }} EAT){% else %}(this pairing is not an upcoming fixture in today's saved picks, so it shows n/a){% endif %}.
                                 <b>Model</b> = fair price from the model (100 ÷ probability).
-                                Half-time and corners have no bookmaker odds on the free API plan.
                                 A real price above the model price is value.
                             </div>
                         </div>
@@ -763,6 +650,21 @@
                 {% endif %}
             </div>
         </section>
+
+        <details class="hint" style="margin:18px 0 6px;">
+            <summary style="cursor:pointer;">
+                Automation · {% if automation.xg.matches %}real xG on {{ automation.xg.pct }}% of matches{% if automation.xg.backlog %} · {{ automation.xg.backlog }} to upgrade ({{ automation.xg_daily_budget }} a day, newest first){% endif %}{% else %}status{% endif %}
+            </summary>
+            <div style="margin-top:8px;">
+                {% for s in automation.steps %}
+                    <div style="display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:space-between;padding:6px 0;border-top:1px solid var(--line);">
+                        <span><b>{{ s.label }}</b>{% if s.detail %} · {{ s.detail }}{% endif %}</span>
+                        <span>{{ s.state }}{% if s.when %} · {{ s.when }}{% endif %}</span>
+                    </div>
+                {% endfor %}
+                <div style="margin-top:6px;">Each step runs once a day after the 03:00 Nairobi quota reset and retries if it fails. Real xG is added gradually so fixtures and odds always get the quota first.</div>
+            </div>
+        </details>
 
         <div class="foot">
             Predictions are model probabilities, not guarantees. Bet responsibly (18+).
@@ -825,9 +727,7 @@
 
         const FILTERS = {
             goals:   {list: '#matchList',  bar: 'dateFilter',  head: 'dateHeadline',  none: 'noFilterResults'},
-            corners: {list: '#cornerList', bar: 'cDateFilter', head: 'cDateHeadline', none: 'cNoFilter'},
-            ht:      {list: '#htList',     bar: 'hDateFilter', head: 'hDateHeadline', none: 'hNoFilter'},
-            btts:    {list: '#bttsList',   bar: 'bDateFilter', head: 'bDateHeadline', none: 'bNoFilter'}
+            btts:    {list: '#bttsList',    bar: 'bDateFilter', head: 'bDateHeadline', none: 'bNoFilter'}
         };
 
         function initDateFilter(key) {
@@ -874,30 +774,203 @@
         }
 
         const TEAMS_BY_LEAGUE = {{ teams_by_league|tojson }};
+        const LEAGUES = {{ leagues|tojson }};            // [[id, name], ...]
 
-        function fillTeams() {
-            const lg = document.getElementById('lg');
-            if (!lg) return;
-            const names = TEAMS_BY_LEAGUE[lg.value] || [];
-            [['homeSel', 'Select home team'], ['awaySel', 'Select away team']].forEach(([id, ph]) => {
-                const sel = document.getElementById(id);
-                const keep = sel.value;
-                sel.innerHTML = '';
-                const first = document.createElement('option');
-                first.value = ''; first.textContent = ph;
-                sel.appendChild(first);
-                names.forEach(n => {
-                    const o = document.createElement('option');
-                    o.value = n; o.textContent = n;
-                    if (n === keep) o.selected = true;
-                    sel.appendChild(o);
+        // ---- Single Match pickers -------------------------------------------------------------
+        // Opening the list never selects anything. A team/league is chosen only by a click/tap on an item.
+        function norm(t) { return (t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+
+        function makePicker(root, opts) {
+            const input = root.querySelector('.picker-input');
+            const list = root.querySelector('.picker-list');
+            const clearBtn = root.querySelector('.picker-clear');
+            let items = [], shown = [], hl = -1, filterOn = false;     // filterOn: only while the user is typing
+
+            function isOpen() { return !list.hidden; }
+            function close() { list.hidden = true; hl = -1; filterOn = false; }
+            function syncClear() { if (clearBtn) clearBtn.hidden = !input.value; }
+
+            function render() {
+                const q = (opts.searchable && filterOn) ? norm(input.value.trim()) : '';
+                shown = items.filter(it => !q || norm(it.label).includes(q)).slice(0, 100);
+                list.innerHTML = '';
+                if (!shown.length) {
+                    const li = document.createElement('li');
+                    li.className = 'none'; li.textContent = items.length ? 'No team matches that' : 'No teams for this league';
+                    list.appendChild(li); return;
+                }
+                shown.forEach((it, i) => {
+                    const li = document.createElement('li');
+                    li.setAttribute('role', 'option'); li.dataset.i = i; li.textContent = it.label;
+                    if (norm(it.label) === norm(input.value) || (opts.current && String(it.value) === String(opts.current()))) li.classList.add('sel');
+                    list.appendChild(li);
                 });
+            }
+            function open() { render(); list.hidden = false; }
+            function pick(it) {
+                if (!it) return;
+                input.value = it.label; syncClear(); close();
+                if (opts.onPick) opts.onPick(it);
+                input.blur();
+            }
+            function mark(i) {
+                const lis = list.querySelectorAll('li[data-i]');
+                lis.forEach(l => l.classList.remove('hl'));
+                if (!lis.length) { hl = -1; return; }
+                hl = (i + lis.length) % lis.length;
+                lis[hl].classList.add('hl'); lis[hl].scrollIntoView({block: 'nearest'});
+            }
+
+            // keep focus on the input while the list is used, so the tap that picks an item is its own event
+            list.addEventListener('mousedown', e => e.preventDefault());
+            list.addEventListener('click', e => {
+                const li = e.target.closest('li[data-i]');
+                if (li) pick(shown[+li.dataset.i]);
             });
+            input.addEventListener('click', () => { if (!isOpen()) { filterOn = false; open(); } });
+            input.addEventListener('focus', () => { if (!isOpen()) { filterOn = false; open(); } });
+            input.addEventListener('input', () => { filterOn = true; syncClear(); open(); hl = -1; });
+            input.addEventListener('keydown', e => {
+                if (e.key === 'ArrowDown') { e.preventDefault(); if (!isOpen()) open(); mark(hl + 1); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); if (!isOpen()) open(); mark(hl - 1); }
+                else if (e.key === 'Enter' && isOpen() && hl >= 0) { e.preventDefault(); pick(shown[hl]); }
+                else if (e.key === 'Escape') { close(); }
+            });
+            if (clearBtn) clearBtn.addEventListener('click', () => { input.value = ''; filterOn = false; syncClear(); input.focus(); open(); });
+            document.addEventListener('pointerdown', e => { if (!root.contains(e.target)) close(); });
+
+            syncClear();
+            return {
+                setItems(arr) { items = arr; if (isOpen()) render(); },
+                has(name) { return items.some(it => norm(it.label) === norm(name)); },
+                clear() { input.value = ''; syncClear(); },
+                input: input
+            };
         }
+
         document.addEventListener('DOMContentLoaded', function () {
-            const lg = document.getElementById('lg');
-            if (lg) lg.addEventListener('change', fillTeams);
+            const lgRoot = document.getElementById('lgPicker');
+            if (!lgRoot) return;
+            const lgValue = document.getElementById('lgValue');
+            const teamItems = () => (TEAMS_BY_LEAGUE[lgValue.value] || []).map(n => ({value: n, label: n}));
+
+            const home = makePicker(document.getElementById('homePicker'), {searchable: true});
+            const away = makePicker(document.getElementById('awayPicker'), {searchable: true});
+            const lg = makePicker(lgRoot, {
+                searchable: false,
+                current: () => lgValue.value,
+                onPick: it => {
+                    lgValue.value = it.value;
+                    home.setItems(teamItems()); away.setItems(teamItems());
+                    [home, away].forEach(p => { if (p.input.value && !p.has(p.input.value)) p.clear(); });   // keep a team only if it exists in the new league
+                }
+            });
+            lg.setItems(LEAGUES.map(l => ({value: String(l[0]), label: l[1]})));
+            const cur = LEAGUES.find(l => String(l[0]) === String(lgValue.value));
+            lg.input.value = cur ? cur[1] : '';
+            home.setItems(teamItems()); away.setItems(teamItems());
         });
+
+        // ---- Acca builder ----------------------------------------------------------------------
+        (function () {
+            const go = document.getElementById('accaGo');
+            if (!go) return;
+            const CFG = {{ acca_cfg|tojson }};
+            const out = document.getElementById('accaOut');
+            const st = {market: CFG.markets[0].key, side: 'best'};
+            const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+            const pct = x => (x * 100).toFixed(1) + '%';
+
+            function chips(box, items, activeVal, attr) {
+                box.innerHTML = '';
+                items.forEach(it => {
+                    const b = document.createElement('button');
+                    b.type = 'button'; b.textContent = it.label; b.dataset[attr] = it.value;
+                    if (it.value === activeVal) b.classList.add('active');
+                    box.appendChild(b);
+                });
+            }
+            function drawSides() {
+                const m = CFG.markets.find(x => x.key === st.market);
+                chips(document.getElementById('accaSide'),
+                      [{value: 'best', label: 'Best side'}].concat(m.sides.map(s => ({value: s, label: s}))), st.side, 'side');
+            }
+            function clearOut() { out.innerHTML = ''; }
+
+            document.getElementById('accaDay').addEventListener('click', e => {
+                const b = e.target.closest('button[data-day]'); if (!b) return;
+                document.querySelectorAll('#accaDay button').forEach(x => x.classList.toggle('active', x === b)); clearOut();
+            });
+            document.getElementById('accaMarket').addEventListener('click', e => {
+                const b = e.target.closest('button[data-market]'); if (!b) return;
+                st.market = b.dataset.market; st.side = 'best';
+                document.querySelectorAll('#accaMarket button').forEach(x => x.classList.toggle('active', x === b));
+                drawSides(); clearOut();
+            });
+            document.getElementById('accaSide').addEventListener('click', e => {
+                const b = e.target.closest('button[data-side]'); if (!b) return;
+                st.side = b.dataset.side;
+                document.querySelectorAll('#accaSide button').forEach(x => x.classList.toggle('active', x === b)); clearOut();
+            });
+            document.getElementById('accaLegs').addEventListener('click', e => {
+                const b = e.target.closest('button[data-legs]'); if (!b) return;
+                document.querySelectorAll('#accaLegs button').forEach(x => x.classList.toggle('active', x === b)); clearOut();
+            });
+            drawSides();
+
+            function funnelLine(f) {
+                return 'Fixtures that day: ' + f.fixtures + ' · with real odds: ' + f.with_odds + ' · met minimum probability: ' + f.min_prob +
+                       ' · met minimum odds: ' + f.min_odds;
+            }
+
+            function render(d) {
+                if (!d.ok) {
+                    out.innerHTML = '<div class="acca-none"><b>' + esc(d.message) + '</b>' +
+                        (d.funnel ? '<div class="hint">' + esc(funnelLine(d.funnel)) + '</div>' : '') + '</div>';
+                    return;
+                }
+                const c = d.combined;
+                let h = '<div class="acca-lbl" style="margin-top:18px;">' + esc(d.message) + '</div>' +
+                        (d.note ? '<div class="hint" style="margin:0 0 10px;">' + esc(d.note) + '</div>' : '');
+                d.legs.forEach((l, i) => {
+                    h += '<div class="acca-leg"><div class="top"><span>' + esc(l.league) + ' · ' + esc(l.kickoff) + ' EAT</span><span>Leg ' + (i + 1) + '</span></div>' +
+                         '<div class="teams">' + esc(l.home) + ' vs ' + esc(l.away) + '</div>' +
+                         '<div class="pick"><span>' + esc(l.label) + '</span><span class="odds">@ ' + l.odds.toFixed(2) + '</span></div>' +
+                         '<div class="sub">Model probability ' + pct(l.prob) + '</div></div>';
+                });
+                h += '<div class="acca-total"><div class="hint">Combined odds · ' + c.legs + ' legs</div><div class="big">' + c.odds.toFixed(2) + '</div>' +
+                     '<div class="line"><span>Model chance all legs win</span><b>' + pct(c.prob) + '</b></div>' +
+                     '<div class="line"><span>Bookmaker-implied chance</span><b>' + pct(c.implied_prob) + '</b></div>' +
+                     '<div class="line"><span>Stake</span><input type="number" id="accaStake" inputmode="decimal" min="0" value="100" style="max-width:120px;"></div>' +
+                     '<div class="line"><span>Return if every leg wins</span><b id="accaRet"></b></div></div>' +
+                     '<div class="acca-warn">Every extra leg multiplies the risk: even at this price the model gives all ' + c.legs +
+                     ' legs only a ' + pct(c.prob) + ' chance together (it assumes the legs are independent). In backtests this model was not better than ' +
+                     'the bookmaker&#39;s own probabilities, so a bigger combined price is not a better bet. This is a research tool, not betting advice. ' +
+                     'Only stake what you can afford to lose.</div>';
+                out.innerHTML = h;
+                const stake = document.getElementById('accaStake'), ret = document.getElementById('accaRet');
+                const upd = () => { const s = parseFloat(stake.value) || 0; ret.textContent = (s * c.odds).toFixed(2) + ' (profit ' + (s * c.odds - s).toFixed(2) + ')'; };
+                stake.addEventListener('input', upd); upd();
+            }
+
+            go.addEventListener('click', async () => {
+                const day = document.querySelector('#accaDay button.active');
+                const q = new URLSearchParams({
+                    market: st.market, side: st.side, day: day ? day.dataset.day : '',
+                    legs: (document.querySelector('#accaLegs button.active') || {dataset: {legs: 'auto'}}).dataset.legs,
+                    min_prob: document.getElementById('accaProb').value,
+                    min_combined: document.getElementById('accaCombined').value,
+                    min_odds: document.getElementById('accaOdds').value
+                });
+                go.disabled = true; out.innerHTML = '<div class="hint" style="margin-top:14px;">Building…</div>';
+                try {
+                    const r = await fetch('/api/acca?' + q.toString());
+                    render(await r.json());
+                } catch (err) {
+                    out.innerHTML = '<div class="acca-none"><b>Could not build the acca.</b><div class="hint">' + esc(err) + '</div></div>';
+                } finally { go.disabled = false; }
+            });
+        })();
 
         function setPickedDate(iso) {
             document.getElementById('datePick').value = iso;
@@ -916,12 +989,8 @@
             const iso = document.getElementById('datePick').value;
             const mBox = document.getElementById('datePickMatches');
             const rBox = document.getElementById('datePickResults');
-            const cBox = document.getElementById('datePickCorners');
-            const hBox = document.getElementById('datePickHt');
             const bBox = document.getElementById('datePickBtts');
             mBox.innerHTML = '';
-            cBox.innerHTML = '';
-            hBox.innerHTML = '';
             bBox.innerHTML = '';
             rBox.innerHTML = '';
             let n = 0;
@@ -932,32 +1001,22 @@
                     c.style.display = '';
                     bBox.appendChild(c); n++;
                 });
-                document.querySelectorAll('#htList .mrow[data-match-date="' + iso + '"]').forEach(r => {
-                    const c = r.cloneNode(true);
-                    c.classList.remove('open');
-                    c.style.display = '';
-                    hBox.appendChild(c); n++;
-                });
-                document.querySelectorAll('#cornerList .mrow[data-match-date="' + iso + '"]').forEach(r => {
-                    const c = r.cloneNode(true);
-                    c.classList.remove('open');
-                    c.style.display = '';
-                    cBox.appendChild(c); n++;
-                });
                 document.querySelectorAll('#matchList .mrow[data-match-date="' + iso + '"]').forEach(r => {
                     const c = r.cloneNode(true);
                     c.classList.remove('open');
                     c.style.display = '';
                     mBox.appendChild(c); n++;
                 });
-                document.querySelectorAll('#results .rcard[data-result-date="' + iso + '"]').forEach(r => {
-                    rBox.appendChild(r.cloneNode(true)); n++;
+                document.querySelectorAll('#results .rrow[data-result-date="' + iso + '"]').forEach(r => {
+                    const c = r.cloneNode(true);
+                    c.classList.remove('open');
+                    rBox.appendChild(c); n++;
                 });
             }
             document.getElementById('datePickGoalsBar').style.display = mBox.children.length ? '' : 'none';
-            document.getElementById('datePickCornersBar').style.display = cBox.children.length ? '' : 'none';
-            document.getElementById('datePickHtBar').style.display = hBox.children.length ? '' : 'none';
             document.getElementById('datePickBttsBar').style.display = bBox.children.length ? '' : 'none';
+            document.getElementById('datePickResultsBar').style.display = rBox.children.length ? '' : 'none';
+            rBox.style.display = rBox.children.length ? '' : 'none';
             document.getElementById('datePickHeadline').textContent = iso ? headline(iso) : '';
             document.getElementById('datePickNone').style.display = (iso && n === 0) ? 'block' : 'none';
         }
@@ -965,8 +1024,6 @@
         document.addEventListener('DOMContentLoaded', function () {
             setPickedDate(isoPlus(0));
             initDateFilter('goals');
-            initDateFilter('corners');
-            initDateFilter('ht');
             initDateFilter('btts');
 
             // starting tab: ?tab=... in the URL, or Single Match right after a prediction

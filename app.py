@@ -1,6 +1,9 @@
 # app.py
 """
 Single-entry daily runner with a once-a-day recent-matches fetcher.
+
+The model covers two markets only: Over/Under 2.5 goals and Both Teams To Score (Yes/No).
+Tabs: All Matches (Over/Under 2.5), BTTS, Acca, Results, Date and Single Match.
 """
 import json
 import os
@@ -23,7 +26,13 @@ LAST_FETCH_FILE = "data/last_fetch.txt"
 REFRESH_INTERVAL_HOURS = 24
 RESULTS_DAYS_DEFAULT = 7
 
-RECENT_FETCH_INTERVAL_SECONDS = 60 * 60  # 1 hour
+RECENT_FETCH_INTERVAL_SECONDS = 60 * 60  # (kept for older code) the automation loop below wakes more often
+
+# Optional settings in config.py (each has a default here):
+import config as _config
+XG_DAILY_BUDGET = int(getattr(_config, "XG_DAILY_BUDGET", 400))           # real-xG requests per day (0 = off)
+XG_ENRICH_AT_STARTUP = bool(getattr(_config, "XG_ENRICH_AT_STARTUP", False))  # True = fetch ALL xG on a first run
+AUTOMATION_INTERVAL_SECONDS = int(getattr(_config, "AUTOMATION_INTERVAL_SECONDS", 15 * 60))
 
 app = Flask(__name__)
 
@@ -239,12 +248,21 @@ def run_daily_pipeline(force_no_refresh=False):
         else:
             print("  Checking for recently finished matches...")
             from fetch_data import fetch_recent_matches
-            fetch_recent_matches(LEAGUES_TO_FETCH, days_back=_catchup_days())
-            _mark_job_done("recent_fetch")
+            ok = fetch_recent_matches(LEAGUES_TO_FETCH, days_back=_catchup_days())
+            if ok is not False:
+                _mark_job_done("recent_fetch")
+            else:
+                print("  Recent-match fetch was incomplete (API quota or error): not marked done, will retry.")
 
     if not os.path.exists(MATCHES_XG_CSV) or need_full_fetch:
         raw = pd.read_csv(MATCHES_CSV)
-        enrich_xg(raw)
+        if XG_ENRICH_AT_STARTUP:
+            enrich_xg(raw)                      # one request per match: can use up a whole day's quota
+        else:
+            from fetch_data import write_proxy_xg
+            write_proxy_xg(raw)
+            print("  xG: goals stand in for now. Real xG is added every day, newest matches first "
+                  f"(up to {XG_DAILY_BUDGET} requests a day; set XG_DAILY_BUDGET in config.py).")
     else:
         print("✓ xG data already present — skipping enrichment")
 
@@ -268,12 +286,18 @@ def _json_default(o):
     return str(o)
 
 
+_STALE_PICK_FIELDS = ("odds_all", "markets")          # fields older versions saved; dropped when picks are read
+
+
 def _read_picks_cache(day):
     """Today's saved picks (same UTC day), or None."""
     try:
         with open(PICKS_CACHE_FILE, encoding="utf-8") as f:
             blob = json.load(f)
         if blob.get("day") == day and blob.get("data", {}).get("matches"):
+            for m in blob["data"]["matches"]:                    # picks saved by older versions carry extra fields
+                for stale in _STALE_PICK_FIELDS:
+                    m.pop(stale, None)
             return blob
     except Exception:
         pass
@@ -289,7 +313,16 @@ def _write_picks_cache(day, stamp, data):
         print(f"Could not save picks cache: {e}")
 
 
+_LOAD_LOCK = threading.RLock()
+
+
 def load_matches(force=False, days=2):
+    """One caller at a time: the daily automation and a page view can never fetch the same fixtures twice."""
+    with _LOAD_LOCK:
+        return _load_matches_locked(force, days)
+
+
+def _load_matches_locked(force=False, days=2):
     """Fixtures + picks are fetched ONCE per UTC day (the API quota resets at 00:00 UTC),
     saved to data/picks_cache.json, and reused on every page view and restart.
     Only the Refresh button (force=True) goes back to the API."""
@@ -427,8 +460,6 @@ def load_recent_results(days=RESULTS_DAYS_DEFAULT):
         from results_extra import build_extras
         extras = build_extras([r["event_id"] for r in results])
         for r in results:
-            r["ht"] = extras.get(r["event_id"], {}).get("ht")
-            r["corners"] = extras.get(r["event_id"], {}).get("corners")
             r["btts"] = extras.get(r["event_id"], {}).get("btts")
     except Exception as e:
         print(f"Results extras failed: {e}")
@@ -442,23 +473,26 @@ def load_recent_results(days=RESULTS_DAYS_DEFAULT):
 JOBS_FILE = os.path.join(DATA_DIR, "daily_jobs.json")
 
 
-def _job_done_today(name):
+def _job_done_today(name, now=None):
     """True if background job `name` already ran today (UTC day = API quota day)."""
     try:
         with open(JOBS_FILE, encoding="utf-8") as f:
-            return json.load(f).get(name) == datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            return json.load(f).get(name) == (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
     except Exception:
         return False
 
 
-def _mark_job_done(name):
+def _mark_job_done(name, now=None):
     try:
         try:
             with open(JOBS_FILE, encoding="utf-8") as f:
                 jobs = json.load(f)
         except Exception:
             jobs = {}
-        jobs[name] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        known = {n for n, _f, _api in STEPS}
+        for stale in [k for k in jobs if k not in known]:        # drop entries for jobs that no longer exist
+            jobs.pop(stale, None)
+        jobs[name] = (now or datetime.now(timezone.utc)).strftime("%Y-%m-%d")
         os.makedirs(DATA_DIR, exist_ok=True)
         with open(JOBS_FILE, "w", encoding="utf-8") as f:
             json.dump(jobs, f)
@@ -466,59 +500,193 @@ def _mark_job_done(name):
         print(f"Could not record job state: {e}")
 
 
-def recent_fetch_loop():
-    """Once per UTC day: pull newly finished matches. The loop only wakes hourly to check."""
+# ----------------------------------------------------------------------
+# Daily automation (everything the model needs, in one ordered job)
+# ----------------------------------------------------------------------
+# Every UTC day (the API quota day) these run in order, each at most once a day:
+#   1. recent_fetch   finished matches since the newest one on disk
+#   2. fixtures_scan  fixtures + real odds + picks for every market (saved for the day)
+#   3. xg_upgrade     real xG for matches that only have goals as a stand-in (budgeted, newest first)
+#   4. results_warm   grade recent predictions so the Results tab opens instantly (local, no API)
+# A step that fails retries an hour later. A quota failure (429) holds every API step until the quota resets.
+STATUS_FILE = os.path.join(DATA_DIR, "automation_status.json")
+STEP_LABELS = {"recent_fetch": "Finished matches", "fixtures_scan": "Fixtures, odds & picks",
+               "xg_upgrade": "Real xG upgrade", "results_warm": "Results grading"}
+_RETRY_AT = {}
+_QUOTA_HOLD_UNTIL = [0.0]
+_status_lock = threading.Lock()
+
+
+def _next_utc_midnight(now):
+    return (now + timedelta(days=1)).replace(hour=0, minute=2, second=0, microsecond=0)   # +2 min after the reset
+
+
+def _read_status():
+    try:
+        with open(STATUS_FILE, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {"steps": {}}
+
+
+def _status_update(name, now, **fields):
+    with _status_lock:
+        st = _read_status()
+        step = st.setdefault("steps", {}).setdefault(name, {})
+        step.update(fields)
+        step["last_try"] = now.isoformat()
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(STATUS_FILE, "w", encoding="utf-8") as f:
+                json.dump(st, f)
+        except Exception as e:
+            print(f"Could not save automation status: {e}")
+
+
+def _step_recent_fetch():
+    import fetch_data as FD
+    global DF
+    ok = FD.fetch_recent_matches(LEAGUES_TO_FETCH, days_back=_catchup_days())
+    info = dict(FD.LAST_FETCH_INFO)
+    try:
+        from model import load_data
+        DF = load_data()                       # reload so the model refits on the new matches
+    except Exception as e:
+        print(f"[AUTOMATION] could not reload data: {e}")
+    invalidate_matches_cache()
+    return {"ok": ok is not False, "quota": bool(info["quota_hit"]),
+            "detail": f"{info['new']} new finished matches" + (" (API quota used up)" if info["quota_hit"] else "")}
+
+
+def _step_fixtures_scan():
+    data = load_matches()
+    matches = data.get("matches") or []
+    stats = data.get("stats") or {}
+    errors = stats.get("fetch_errors") or []
+    quota = bool(stats.get("quota_hit")) or any("429" in str(e) for e in errors)
+    if matches and not stats.get("partial"):
+        return {"ok": True, "quota": False, "detail": f"{len(matches)} fixtures with odds and picks"}
+    if quota:
+        return {"ok": False, "quota": True, "detail": "API quota used up"}
+    if errors:
+        return {"ok": False, "quota": False, "detail": f"fetch problems: {str(errors[0])[:80]}"}
+    return {"ok": True, "quota": False, "detail": "no upcoming fixtures"}      # a real quiet day: do not keep asking
+
+
+def _step_xg_upgrade():
+    import fetch_data as FD
+    global DF
+    if XG_DAILY_BUDGET <= 0:
+        return {"ok": True, "quota": False, "detail": "off (XG_DAILY_BUDGET = 0)"}
+    st = FD.upgrade_xg(budget=XG_DAILY_BUDGET, verbose=True)
+    if st.get("error"):
+        return {"ok": False, "quota": False, "detail": st["error"]}
+    if st["upgraded"]:
+        try:
+            from model import load_data
+            DF = load_data()
+        except Exception as e:
+            print(f"[AUTOMATION] could not reload data: {e}")
+        invalidate_matches_cache()
+    cov = FD.xg_coverage()
+    detail = (f"{st['upgraded']} upgraded, {st['no_xg']} without xG yet · real xG on {cov['pct']}% of matches, "
+              f"{cov['backlog']} to go" + (" · quota used up, continues tomorrow" if st["quota_hit"] else ""))
+    all_failed = st["tried"] > 0 and st["errors"] == st["tried"]
+    return {"ok": not all_failed, "quota": st["quota_hit"], "detail": detail}
+
+
+def _step_results_warm():
+    if DF is None:
+        return {"ok": False, "quota": False, "detail": "data not loaded yet"}
+    results = load_recent_results(RESULTS_DAYS_DEFAULT)
+    return {"ok": True, "quota": False, "detail": f"{len(results)} finished matches graded"}
+
+
+STEPS = [("recent_fetch", _step_recent_fetch, True), ("fixtures_scan", _step_fixtures_scan, True),
+         ("xg_upgrade", _step_xg_upgrade, True), ("results_warm", _step_results_warm, False)]
+
+
+def run_automation_cycle(now=None):
+    """Runs every step that is due. Safe to call often; each step runs at most once per UTC day."""
+    now = now or datetime.now(timezone.utc)
+    ts = now.timestamp()
+    ran = []
+    for name, fn, uses_api in STEPS:
+        if _job_done_today(name, now) or ts < _RETRY_AT.get(name, 0):
+            continue
+        if uses_api and ts < _QUOTA_HOLD_UNTIL[0]:
+            _status_update(name, now, result="waiting", detail="waiting for the API quota to reset",
+                           next_try=datetime.fromtimestamp(_QUOTA_HOLD_UNTIL[0], timezone.utc).isoformat())
+            continue
+        print(f"\n[AUTOMATION] {STEP_LABELS[name]}...")
+        try:
+            res = fn()
+        except Exception as e:
+            res = {"ok": False, "quota": False, "detail": f"error: {e}"}
+        quota = bool(res.get("quota"))
+        if res["ok"]:
+            _mark_job_done(name, now)
+            _RETRY_AT.pop(name, None)
+            result, nxt = "ok", None
+        elif quota:
+            _RETRY_AT[name] = _next_utc_midnight(now).timestamp()
+            result, nxt = "quota", _next_utc_midnight(now)
+        else:
+            _RETRY_AT[name] = ts + 3600
+            result, nxt = "error", now + timedelta(hours=1)
+        if quota and uses_api:
+            _QUOTA_HOLD_UNTIL[0] = _next_utc_midnight(now).timestamp()        # no more API steps today
+            if res["ok"]:
+                nxt = None
+        fields = dict(result=result, detail=res.get("detail", ""), next_try=nxt.isoformat() if nxt else None)
+        if res["ok"]:
+            fields["last_ok"] = now.isoformat()
+        _status_update(name, now, **fields)
+        print(f"[AUTOMATION] {STEP_LABELS[name]}: {result} · {res.get('detail', '')}")
+        ran.append((name, result))
+    return ran
+
+
+def automation_loop():
+    time.sleep(5)                                   # let the web server come up first
     while True:
         try:
-            if not _job_done_today("recent_fetch"):
-                print("\n[RECENT FETCH] Checking for new finished matches...")
-                from fetch_data import fetch_recent_matches
-                fetch_recent_matches(LEAGUES_TO_FETCH, days_back=_catchup_days())
-
-                # Reload DF into memory so the UI updates
-                global DF
-                from model import load_data
-                DF = load_data()
-                _mark_job_done("recent_fetch")
-                print("[RECENT FETCH] Dataset reloaded.")
-                invalidate_matches_cache()          # memory only; picks re-read from today's file
+            run_automation_cycle()
         except Exception as e:
-            print(f"[RECENT FETCH] error: {e}")
-        time.sleep(RECENT_FETCH_INTERVAL_SECONDS)
+            print(f"[AUTOMATION] cycle error: {e}")
+        time.sleep(AUTOMATION_INTERVAL_SECONDS)
 
 
-def corners_update_loop():
-    """Once per UTC day: fetch corner counts for newly finished matches (max 400 requests)."""
-    time.sleep(120)                      # let the app finish starting first
-    while True:
-        try:
-            if not _job_done_today("corners_update"):
-                from corners_data import update_corners
-                added = update_corners(max_new=400, verbose=False)
-                _mark_job_done("corners_update")
-                if added:
-                    print(f"\n[CORNERS] {added} match(es) with corner data added.")
-                    invalidate_matches_cache()
-            if not _job_done_today("ht_update"):
-                from ht_data import update_ht
-                added = update_ht(max_new=getattr(__import__("config"), "HT_DAILY_MAX", 500), verbose=False)
-                _mark_job_done("ht_update")
-                if added:
-                    print(f"\n[HALF-TIME] {added} match(es) with half-time score added.")
-                    invalidate_matches_cache()
-        except Exception as e:
-            print(f"[CORNERS] error: {e}")
-        time.sleep(RECENT_FETCH_INTERVAL_SECONDS)
+def automation_status():
+    """Everything the UI, /health and --status show about the automation. Local files only: no API calls."""
+    st = _read_status().get("steps", {})
+    steps = []
+    for name, _fn, _api in STEPS:
+        s = st.get(name, {})
+        if _job_done_today(name):
+            state, when = "done today", s.get("last_ok")
+        elif s.get("result") == "quota":
+            state, when = "waiting for the quota reset", s.get("next_try")
+        elif s.get("result") == "error":
+            state, when = "will retry", s.get("next_try")
+        elif s.get("result") == "waiting":
+            state, when = "waiting for the quota reset", s.get("next_try")
+        else:
+            state, when = "not run yet today", None
+        steps.append({"name": name, "label": STEP_LABELS[name], "state": state, "detail": s.get("detail", ""),
+                      "when": eat_full(when) + " EAT" if when else ""})
+    try:
+        from fetch_data import xg_coverage
+        xg = xg_coverage()
+    except Exception:
+        xg = {"matches": 0, "real": 0, "pct": 0, "backlog": 0, "gave_up": 0}
+    return {"steps": steps, "xg": xg, "xg_daily_budget": XG_DAILY_BUDGET}
 
 
 def start_background_threads():
-    t3 = threading.Thread(target=corners_update_loop, daemon=True)
-    t3.start()
-    print("✓ Corners updater running (once a day)")
-
-    t2 = threading.Thread(target=recent_fetch_loop, daemon=True)
-    t2.start()
-    print("✓ Recent match fetcher running (once a day)")
+    t = threading.Thread(target=automation_loop, daemon=True)
+    t.start()
+    print("✓ Daily automation running: finished matches → fixtures & picks → real xG → results (each once a day)")
 
 
 # ----------------------------------------------------------------------
@@ -534,61 +702,8 @@ def _norm(text):
     return "".join(c for c in t if not unicodedata.combining(c)).lower().strip()
 
 
-def _single_extras(hid, aid, league_id):
-    """Half-time and corners predictions for the Single Match card."""
-    out = {"ht": None, "corners": None}
-
-    try:
-        import ht_model as H
-        model = H.get_model()
-        if model is None:
-            out["ht"] = {"ok": False, "message": "No half-time data yet (run python ht_data.py)."}
-        else:
-            fit, info, team = model
-            th, ta = team.get(int(hid)), team.get(int(aid))
-            if not th or not ta or th["n"] < H.MIN_MATCHES or ta["n"] < H.MIN_MATCHES:
-                out["ht"] = {"ok": False, "message": "Not enough half-time history for one of these teams."}
-            else:
-                mh, ma = H.expected_ht(fit, int(hid), int(aid), league_id)
-                po = H.prob_over(mh + ma)
-                over = po >= 0.5
-                prob = po if over else 1 - po
-                out["ht"] = {"ok": True, "line": H.LINE, "mu_h": round(mh, 2), "mu_a": round(ma, 2),
-                             "mu_t": round(mh + ma, 2), "p_over": round(po * 100, 1),
-                             "p_under": round((1 - po) * 100, 1),
-                             "pick": f"{'Over' if over else 'Under'} {H.LINE:g} HT", "is_over": over,
-                             "prob": round(prob * 100, 1), "tier": H._tier(prob),
-                             "top_scores": H.top_scores(mh, ma, n=2)}
-    except Exception as e:
-        out["ht"] = {"ok": False, "message": f"Half-time prediction failed: {e}"}
-
-    try:
-        import corners_model as C
-        model = C.get_model()
-        if model is None:
-            out["corners"] = {"ok": False, "message": "No corner data yet (run python corners_data.py)."}
-        else:
-            fit, phi, info, team = model
-            th, ta = team.get(int(hid)), team.get(int(aid))
-            if not th or not ta or th["n"] < C.MIN_MATCHES or ta["n"] < C.MIN_MATCHES:
-                out["corners"] = {"ok": False, "message": "Not enough corner history for one of these teams."}
-            else:
-                mh, ma = C.expected_corners(fit, int(hid), int(aid), league_id)
-                po = C.prob_over(mh + ma, phi)
-                over = po >= 0.5
-                prob = po if over else 1 - po
-                out["corners"] = {"ok": True, "line": C.LINE, "mu_h": round(mh, 1), "mu_a": round(ma, 1),
-                                  "mu_t": round(mh + ma, 1), "p_over": round(po * 100, 1),
-                                  "p_under": round((1 - po) * 100, 1),
-                                  "pick": f"{'Over' if over else 'Under'} {C.LINE:g}", "is_over": over,
-                                  "prob": round(prob * 100, 1), "tier": C._tier(prob)}
-    except Exception as e:
-        out["corners"] = {"ok": False, "message": f"Corners prediction failed: {e}"}
-    return out
-
-
 def _rank_selections(pred):
-    """All markets on the Single Match card as picks, ranked by the model's probability for the
+    """Over/Under 2.5 and BTTS on the Single Match card as picks, ranked by the model's probability for the
     chosen side. Each: market, pick, prob (%), tier, real odds (or None), model odds, EV (if real)."""
     real = pred.get("real") or {}
     items = []
@@ -609,14 +724,6 @@ def _rank_selections(pred):
     b = pred.get("btts")
     if b:
         add("BTTS", b["pick"], b["prob"] * 100, b["tier"], b.get("odds"))
-
-    h = pred.get("ht")
-    if h and h.get("ok"):
-        add("First half O/U 1.5", h["pick"], h["prob"], h["tier"], None)
-
-    c = pred.get("corners")
-    if c and c.get("ok"):
-        add(f"Corners O/U {c['line']:g}", f"{c['pick']} corners", c["prob"], c["tier"], None)
 
     items.sort(key=lambda i: i["prob"], reverse=True)
     return items
@@ -733,7 +840,6 @@ def index():
                     pred["real"] = ({"over25": fx.get("over_odds"), "under25": fx.get("under_odds"),
                                      "btts_yes": fx.get("btts_yes_odds"), "btts_no": fx.get("btts_no_odds"),
                                      "kickoff": fx.get("date")} if fx else None)
-                    pred.update(_single_extras(hid, aid, league_id))     # "ht" and "corners"
                     try:
                         from btts_model import single as btts_single
                         pred["btts"] = btts_single(pred["lambda_home"], pred["lambda_away"],
@@ -747,18 +853,15 @@ def index():
                     result = {"error": f"Prediction failed: {e}"}
 
     try:
-        from corners_model import corner_predictions
-        corner_rows, corner_info = corner_predictions(all_matches)
+        import acca_builder as AB
+        acca_days = AB.days_available(all_matches)
+        acca_cfg = {"markets": [{"key": k, "title": t, "sides": list(sd)} for k, (t, sd) in AB.MARKETS.items()],
+                    "min_prob": round(AB.DEFAULT_MIN_PROB * 100), "min_odds": AB.DEFAULT_MIN_ODDS,
+                    "max_legs": AB.MAX_LEGS, "min_legs": AB.MIN_LEGS,
+                    "min_combined": AB.DEFAULT_MIN_COMBINED}
     except Exception as e:
-        print(f"corners build failed: {e}")
-        corner_rows, corner_info = [], {"ready": False, "line": 8.5, "message": f"Corners unavailable: {e}"}
-
-    try:
-        from ht_model import ht_predictions
-        ht_rows, ht_info = ht_predictions(all_matches)
-    except Exception as e:
-        print(f"half-time build failed: {e}")
-        ht_rows, ht_info = [], {"ready": False, "line": 1.5, "message": f"Half-time unavailable: {e}"}
+        print(f"acca setup failed: {e}")
+        acca_days, acca_cfg = [], {"markets": [], "min_prob": 58, "min_odds": 1.15, "max_legs": 3, "min_legs": 2, "min_combined": 2.0}
 
     try:
         from btts_model import btts_predictions
@@ -790,21 +893,53 @@ def index():
         stats=stats,
         picks_last_updated=last_updated,
         last_fetch=last_fetch_age_str(),
+        automation=automation_status(),
         results=results,
         rx=_results_summary(results),
         results_days=results_days,
-        corner_rows=sorted(corner_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
-        corner_info=corner_info,
+        acca_days=acca_days,                  # [{"iso", "label", "count"}]: days that still have upcoming fixtures
+        acca_cfg=acca_cfg,                    # market list + default settings for the Acca tab
         teams_by_league=teams_by_league,
         btts_rows=sorted(btts_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
-        ht_rows=sorted(ht_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
-        ht_info=ht_info,
     )
 
 
 @app.route("/api/matches")
 def api_matches():
     return jsonify(load_matches())
+
+
+@app.route("/api/acca")
+def api_acca():
+    """Acca for ONE market from today's saved fixtures and real bookmaker odds. Makes no API requests of its own.
+    Query: market (ou25|btts), side (best or a side), day (YYYY-MM-DD, EAT), legs (auto = best of 2 or 3 matches,
+    or exactly 2, or exactly 3), min_prob (%), min_odds (per leg), min_combined (combined odds target).
+    By probability only."""
+    import acca_builder as AB
+    a = request.args
+
+    def num(name, default, lo, hi):
+        try:
+            return max(lo, min(hi, float(a.get(name, default))))
+        except (TypeError, ValueError):
+            return default
+
+    raw_legs = (a.get("legs") or "auto").strip().lower()
+    if raw_legs in ("2", "3"):
+        legs_lo = legs_hi = int(raw_legs)                      # exactly 2 or exactly 3 matches
+    else:
+        legs_lo, legs_hi = AB.MIN_LEGS, AB.DEFAULT_LEGS        # auto: the best of 2 or 3
+    data = load_matches() if DF is not None else {"matches": []}
+    try:
+        res = AB.build_acca(
+            data.get("matches", []), a.get("market", "ou25"), a.get("side", "best"), day=a.get("day") or None,
+            legs=legs_hi, min_legs=legs_lo,
+            min_prob=num("min_prob", AB.DEFAULT_MIN_PROB * 100, 0, 99) / 100.0,
+            min_odds=num("min_odds", AB.DEFAULT_MIN_ODDS, 1.0, 50.0),
+            min_combined=num("min_combined", AB.DEFAULT_MIN_COMBINED, 1.01, 1000.0))
+    except ValueError as e:
+        return jsonify({"ok": False, "message": str(e)}), 400
+    return jsonify(res)
 
 
 @app.route("/api/results")
@@ -823,6 +958,7 @@ def health():
         "status": "ok",
         "matches_loaded": 0 if DF is None else len(DF),
         "last_fetch": last_fetch_age_str(),
+        "automation": automation_status(),
     }
 
 
@@ -841,6 +977,12 @@ def cmd_status():
           f"{'exists' if os.path.exists('data/predictions_history.csv') else 'missing'}")
     print(f"  last full download   : {last_fetch_age_str()}")
     print(f"  newest match on disk : {_newest_match_date()}")
+    a = automation_status()
+    print(f"  real xG coverage     : {a['xg']['pct']}% of {a['xg']['matches']} matches "
+          f"({a['xg']['backlog']} to upgrade, {XG_DAILY_BUDGET}/day budget)")
+    for step in a["steps"]:
+        print(f"  {step['label']:<22}: {step['state']}" + (f" ({step['when']})" if step["when"] else "")
+              + (f" · {step['detail']}" if step["detail"] else ""))
 
 
 

@@ -1,11 +1,11 @@
 # results_extra.py
 """
-Extra columns for the Results tab: what the corners model and the first-half goals model
-WOULD have predicted before each finished match, next to what actually happened.
+Extra column for the Results tab: what the BTTS model WOULD have predicted before each finished
+match, next to what actually happened. (Over/Under 2.5 is graded by predictions_history.py.)
 
 Point-in-time: each day's predictions use a model fitted only on matches before that day, so
-nothing leaks. Predictions are cached (data/ht_pred_history.csv, data/corner_pred_history.csv) so
-each match is computed once; new finished matches are added as they appear.
+nothing leaks. Predictions are cached (data/btts_pred_history.csv) so each match is computed once;
+new finished matches are added as they appear.
 """
 import os
 
@@ -14,19 +14,17 @@ import pandas as pd
 
 import config
 
-HT_PRED = "data/ht_pred_history.csv"
-CO_PRED = "data/corner_pred_history.csv"
 BT_PRED = "data/btts_pred_history.csv"
 COLS = ["event_id", "ok", "pick", "prob", "mu_t", "top1_score", "top1_prob", "top2_score", "top2_prob"]
 
 
-def _load(path):
+def _load(path, cols=None):
     if os.path.exists(path):
         try:
             return pd.read_csv(path)
         except Exception:
             pass
-    return pd.DataFrame(columns=COLS)
+    return pd.DataFrame(columns=cols or COLS)
 
 
 def _match_info(event_ids):
@@ -36,9 +34,24 @@ def _match_info(event_ids):
     return m[m["event_id"].isin(event_ids)].dropna(subset=["date"])
 
 
-def _ensure(path, event_ids, train, fit_fn, predict_fn, min_matches):
+_FIT_MEMO = {}
+
+
+def _fit_cached(hist, day):
+    """One goals-model fit per day, used by the BTTS cache."""
+    from model import fit_model
+    key = (str(day), len(hist))
+    if key not in _FIT_MEMO:
+        if len(_FIT_MEMO) > 40:
+            _FIT_MEMO.clear()
+        _FIT_MEMO[key] = fit_model(hist, now=day)
+    return _FIT_MEMO[key]
+
+
+def _ensure(path, event_ids, train, fit_fn, predict_fn, min_matches, cols=None):
     """Compute + cache predictions for event_ids that are not cached yet."""
-    cache = _load(path)
+    cols = cols or COLS
+    cache = _load(path, cols)
     have = set(cache["event_id"].astype(int).tolist()) if len(cache) else set()
     missing = [int(e) for e in event_ids if int(e) not in have]
     if not missing or train is None:
@@ -62,58 +75,10 @@ def _ensure(path, event_ids, train, fit_fn, predict_fn, min_matches):
                     pass
             new.append(row)
     if new:
-        cache = pd.concat([cache, pd.DataFrame(new, columns=COLS)], ignore_index=True)
+        cache = pd.concat([cache, pd.DataFrame(new, columns=cols)], ignore_index=True)
         os.makedirs("data", exist_ok=True)
         cache.to_csv(path, index=False)
     return cache
-
-
-# ---------------------------------------------------------------- half-time
-def _ht_predict(fit, hist, r):
-    import ht_model as H
-    mh, ma = H.expected_ht(fit, r.home_team_id, r.away_team_id, r.league_id)
-    po = H.prob_over(mh + ma)
-    over = po >= 0.5
-    top = H.top_scores(mh, ma)
-    return {"pick": f"{'Over' if over else 'Under'} {H.LINE:g} HT", "prob": round((po if over else 1 - po), 4),
-            "mu_t": round(mh + ma, 2),
-            "top1_score": top[0]["score"], "top1_prob": top[0]["prob"],
-            "top2_score": top[1]["score"], "top2_prob": top[1]["prob"]}
-
-
-def _ht(event_ids):
-    import ht_model as H
-    train = H.load_training()
-    cache = _ensure(HT_PRED, event_ids, train, lambda hist, day: H.fit_ht(hist, now=day),
-                    _ht_predict, H.MIN_MATCHES)
-    actual = {}
-    if os.path.exists(H.HT_CSV):
-        a = pd.read_csv(H.HT_CSV).dropna(subset=["home_ht", "away_ht"])
-        actual = {int(r.event_id): (int(r.home_ht), int(r.away_ht)) for r in a.itertuples()}
-    return cache, actual, H.LINE
-
-
-# ---------------------------------------------------------------- corners
-def _co_predict(fit, hist, r):
-    import corners_model as C
-    mh, ma = C.expected_corners(fit, r.home_team_id, r.away_team_id, r.league_id)
-    phi = float(C.DISPERSION) if C.DISPERSION else C.estimate_phi(fit, hist)
-    po = C.prob_over(mh + ma, phi)
-    over = po >= 0.5
-    return {"pick": f"{'Over' if over else 'Under'} {C.LINE:g}", "prob": round((po if over else 1 - po), 4),
-            "mu_t": round(mh + ma, 1)}
-
-
-def _co(event_ids):
-    import corners_model as C
-    train = C.load_training()
-    cache = _ensure(CO_PRED, event_ids, train, lambda hist, day: C.fit_corners(hist, now=day),
-                    _co_predict, C.MIN_MATCHES)
-    actual = {}
-    if os.path.exists(C.CORNERS_CSV):
-        a = pd.read_csv(C.CORNERS_CSV).dropna(subset=["home_corners", "away_corners"])
-        actual = {int(r.event_id): (int(r.home_corners), int(r.away_corners)) for r in a.itertuples()}
-    return cache, actual, C.LINE
 
 
 # ---------------------------------------------------------------- BTTS
@@ -128,9 +93,9 @@ def _bt_predict(fit, hist, r):
 
 
 def _bt(event_ids):
-    from model import fit_model, load_data
+    from model import load_data
     train = load_data()
-    cache = _ensure(BT_PRED, event_ids, train, lambda hist, day: fit_model(hist, now=day), _bt_predict, 10)
+    cache = _ensure(BT_PRED, event_ids, train, _fit_cached, _bt_predict, 10)
     g = pd.read_csv(config.MATCHES_XG_CSV, usecols=["event_id", "home_goals", "away_goals"])
     g = g[g["event_id"].isin(event_ids)].dropna()
     actual = {int(r.event_id): (int(r.home_goals), int(r.away_goals)) for r in g.itertuples()}
@@ -139,50 +104,9 @@ def _bt(event_ids):
 
 # ---------------------------------------------------------------- public
 def build_extras(event_ids):
-    """{event_id: {"ht": {...} | None, "corners": {...} | None}} for the Results tab."""
+    """{event_id: {"btts": {...} | None}}"""
     ids = [int(e) for e in event_ids]
-    out = {e: {"ht": None, "corners": None, "btts": None} for e in ids}
-
-    try:
-        cache, actual, line = _ht(ids)
-        pred = {int(r.event_id): r for r in cache[cache["ok"] == 1].itertuples()}
-        for e in ids:
-            p, a = pred.get(e), actual.get(e)
-            if p is None and a is None:
-                continue
-            d = {"has_pred": p is not None, "has_actual": a is not None, "line": line}
-            if a:
-                d.update(ah=a[0], aa=a[1], total=a[0] + a[1], actual_over=(a[0] + a[1]) > line,
-                         score=f"{a[0]}-{a[1]}")
-            if p is not None:
-                d.update(pick=p.pick, prob=round(p.prob * 100, 1), mu_t=p.mu_t,
-                         top1_score=p.top1_score, top1_prob=p.top1_prob,
-                         top2_score=p.top2_score, top2_prob=p.top2_prob)
-                if a:
-                    d["hit"] = p.pick.startswith("Over") == d["actual_over"]
-                    d["top1_hit"] = p.top1_score == d["score"]
-                    d["top2_hit"] = p.top2_score == d["score"]
-            out[e]["ht"] = d
-    except Exception as ex:
-        print(f"Results (half-time) failed: {ex}")
-
-    try:
-        cache, actual, line = _co(ids)
-        pred = {int(r.event_id): r for r in cache[cache["ok"] == 1].itertuples()}
-        for e in ids:
-            p, a = pred.get(e), actual.get(e)
-            if p is None and a is None:
-                continue
-            d = {"has_pred": p is not None, "has_actual": a is not None, "line": line}
-            if a:
-                d.update(ah=a[0], aa=a[1], total=a[0] + a[1], actual_over=(a[0] + a[1]) > line)
-            if p is not None:
-                d.update(pick=p.pick, prob=round(p.prob * 100, 1), mu_t=p.mu_t)
-                if a:
-                    d["hit"] = p.pick.startswith("Over") == d["actual_over"]
-            out[e]["corners"] = d
-    except Exception as ex:
-        print(f"Results (corners) failed: {ex}")
+    out = {e: {"btts": None} for e in ids}
     try:
         cache, actual = _bt(ids)
         pred = {int(r.event_id): r for r in cache[cache["ok"] == 1].itertuples()}
@@ -202,13 +126,23 @@ def build_extras(event_ids):
 
 
 def summary(results):
-    """Hit counts over the shown results: {'ht_ou': (hits, n), 'ht_top1': .., 'ht_top2': .., 'corners': ..}"""
-    def tally(key, sub, flag):
-        vals = [r[key][flag] for r in results if r.get(key) and flag in r[key]]
-        return (sum(1 for v in vals if v), len(vals))
-    s = {"ht_ou": tally("ht", "ht", "hit"), "ht_top1": tally("ht", "ht", "top1_hit"),
-         "corners": tally("corners", "corners", "hit"), "btts": tally("btts", "btts", "hit")}
-    t1, n = s["ht_top1"]
-    t2 = sum(1 for r in results if r.get("ht") and r["ht"].get("top2_hit"))
-    s["ht_top2"] = (t1 + t2, n)           # top-1 and alt are always different scores
-    return s
+    """Hit counts over the shown results, as (hits, picks) tuples, split by the side the model PICKED:
+    by_side["ou25"]["Over"] = (Over 2.5 picks that won, Over 2.5 picks made). Same for BTTS Yes / No.
+    top1 / top2 = how often the most likely / second most likely scoreline was the real one."""
+    def by_side(pairs, sides):
+        out = {side: [0, 0] for side in sides}
+        for side, hit in pairs:
+            if side in out:
+                out[side][1] += 1
+                out[side][0] += 1 if hit else 0
+        return {side: (v[0], v[1]) for side, v in out.items()}
+
+    ou25 = [(r["prediction"]["over_pick"].split()[0], r["prediction"]["over_hit"])
+            for r in results if r.get("prediction")]
+    btts = [(r["btts"]["pick"].replace("BTTS ", ""), r["btts"]["hit"])
+            for r in results if r.get("btts") and "hit" in r["btts"]]
+    pred = [r["prediction"] for r in results if r.get("prediction")]
+    t1 = sum(1 for p in pred if p.get("top1_hit"))
+    t2 = t1 + sum(1 for p in pred if p.get("top2_hit"))      # top-1 and alt are always different scores
+    return {"top1": (t1, len(pred)), "top2": (t2, len(pred)),
+            "by_side": {"ou25": by_side(ou25, ("Over", "Under")), "btts": by_side(btts, ("Yes", "No"))}}

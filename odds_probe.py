@@ -14,6 +14,7 @@ means BOTH over_25_goals and under_25_goals are non-null.
 import argparse
 import json
 import os
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -26,16 +27,34 @@ HEADERS = {"Authorization": f"Token {BZZOIRO_API_KEY}"}
 OUT_CSV = "data/odds_history.csv"
 COLUMNS = ["event_id", "over_25", "under_25", "last_update_at", "last_change_at", "raw"]
 WORKERS = 6
+DEFAULT_LIMIT = 500          # max requests per --backfill run
 SAMPLE = 60
 RETRY_FROM = "2026-04-25"   # odds coverage is ~100% from May 2026, so empties after this are suspect
 
 
+# Quota guard: after this many 429s in a row everything stops. Without it, one run keeps
+# sending thousands of requests that can only fail while the daily quota is used up.
+STOP_AFTER_429 = 5
+QUOTA_STOP = threading.Event()
+_lock = threading.Lock()
+_streak = [0]
+
+
 def fetch(event_id):
+    if QUOTA_STOP.is_set():
+        return event_id, None, "skipped (quota)"
     try:
         r = requests.get(f"{BZZOIRO_BASE_URL}/events/{event_id}/odds/",
                          headers=HEADERS, timeout=20)
     except Exception as e:
         return event_id, None, f"request failed: {e}"
+    with _lock:
+        if r.status_code == 429:
+            _streak[0] += 1
+            if _streak[0] >= STOP_AFTER_429:
+                QUOTA_STOP.set()
+        else:
+            _streak[0] = 0
     if r.status_code != 200:
         return event_id, None, f"HTTP {r.status_code}"
     try:
@@ -100,6 +119,10 @@ def fetch_many(event_ids):
             n += 1
             if n % 200 == 0 or n == len(event_ids):
                 print(f"  {n}/{len(event_ids)}")
+    if QUOTA_STOP.is_set():
+        print("\nSTOPPED EARLY: the API's daily quota is used up (HTTP 429). It resets at "
+              "00:00 UTC (03:00 Nairobi).\nRows fetched before it stopped were saved; "
+              "re-run tomorrow to continue.")
     return rows, failed
 
 
@@ -151,11 +174,16 @@ def probe():
         print(json.dumps(example, indent=2, default=str)[:1500])
 
 
-def backfill():
-    df = finished_events()
+def backfill(limit=DEFAULT_LIMIT):
+    df = finished_events().sort_values("date", ascending=False)      # newest first: only recent matches have odds
     saved = load_saved()
-    todo = [int(e) for e in df["event_id"] if int(e) not in set(saved["event_id"].astype(int))]
+    have = set(saved["event_id"].astype(int))
+    todo = [int(e) for e in df["event_id"] if int(e) not in have]
     print(f"{len(saved)} already saved, {len(todo)} to fetch")
+    if limit and len(todo) > limit:
+        print(f"Fetching the newest {limit} only (--limit {limit}) so one run cannot use up the daily quota.\n"
+              f"Raise it with --limit N if you have requests to spare.")
+        todo = todo[:limit]
     if todo:
         rows, failed = fetch_many(todo)
         saved = merge_rows(saved, rows)
@@ -188,10 +216,12 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("--backfill", action="store_true")
     ap.add_argument("--refresh", action="store_true")
+    ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT,
+                    help="max requests for --backfill (default %(default)s; 0 = no limit)")
     a = ap.parse_args()
     if a.refresh:
         refresh()
     elif a.backfill:
-        backfill()
+        backfill(a.limit)
     else:
         probe()

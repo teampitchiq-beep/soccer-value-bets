@@ -64,3 +64,5 @@ Thumbs.db
 # Dev debug scripts (kept locally, not committed)
 debug_*.py
 oddtest.py
+
+config.py.*
