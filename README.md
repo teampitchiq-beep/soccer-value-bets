@@ -27,6 +27,8 @@ Runs from the terminal on Kali Linux (any Linux with Python 3.10+ works). Data c
 |---|---|
 | 📅 **All Matches** | Upcoming fixtures: Over/Under 2.5 %, odds, xG, likely scorelines, confidence tier. Expand a row for BTTS as well |
 | 🎯 **Acca** | Pick a day, a market (Over/Under 2.5 or BTTS) and a side; builds the most probable acca of 2 or 3 matches with combined odds of 2.00+ from real bookmaker odds, or tells you nothing qualified |
+| 📈 **Trends** | For every team playing on a chosen day (Prev / Next / Today / calendar, past or future): the most demanding Over / Under line its last 10 matches cleared, for 8 stats (shots, shots on target, corners, fouls, yellow cards, offsides, throw-ins, GK saves) in three views (team For, Against, Match total). Each card shows hit rate, average, median, a last-10 bar chart with the line drawn across, the model's probability for that line in the actual fixture, and the next match |
+| 📊 **Shots** | Team shots per fixture: home team's average shots in its last 10 home matches, away team's in its last 10 away matches, their mean (Avg), fixtures listed highest first. Date picker (Prev / Next / Today) works for any past or future day |
 | ⚽ **BTTS** | Both Teams To Score Yes/No, highest probability first, with bookmaker odds and value (EV) |
 | 📋 **Results** | Finished matches (last 3 / 7 / 14 / 30 days): a scoreboard of hit rates by side, then one tidy row per match |
 | 📆 **Date** | Pick any day (Prev / Next / Today): goals picks, BTTS and results for that day |
@@ -86,6 +88,47 @@ better bet. Of the older accumulator settings in `config.py`, the new builder re
 `ACCA_POOL` and the `CACCA_*` settings belonged to a previous generator that is no longer part of the project, and are ignored.
 The same logic is available as JSON at
 `/api/acca?market=ou25&side=Over&legs=auto&min_prob=58&min_odds=1.15&min_combined=2` (`market` is `ou25` or `btts`; `legs` is `auto` for the best of 2 or 3, `2`, or `3`).
+
+## Trends tab
+
+- **Data:** one `/events/{id}/stats/` request returns every stat, stored in `data/match_stats.csv` (and the shots also go to the Shots cache).
+  The automation fetches up to `STATS_DAILY_BUDGET` (default 600) matches per UTC day, starting with the last 10 matches of the teams in the upcoming
+  fixtures. **Fetch missing stats** on the tab fills one day's gaps now. Until a team's last 10 matches are stored, it has no cards.
+- **Lines:** only lines between the 10th and 90th percentile of the stat are offered, so trivial lines never appear. "Realistic lines only" (on by default)
+  also hides cards where the model gives the line under 35% or over 92%.
+- **Model probability:** a ridge for/against model per stat (`STATS_HALF_LIFE`, default 180 days) gives the expected value for the fixture;
+  a negative binomial, with its spread measured out of sample over the last 120 days, turns it into the probability of the line. It is not tested against
+  bookmaker odds (no odds for these markets), so treat it as a sanity check on the streak, not as a betting edge.
+- **Goals and BTTS:** Over / Under 2.5 goals and BTTS Yes / No trends are built from the scores already in `matches.csv`, so they need no stats requests
+  and appear straight away. Their model probability is the app's own (goals model incl. the shots blend, and the BTTS model). BTTS bars show the scoreline.
+- **Player markets** (e.g. a goalkeeper's saves) are not possible: the API has no player stats.
+
+## Shots tab
+
+- **Numbers:** for each fixture, the home team's average shots over its last 10 **home** matches and the away team's over its
+  last 10 **away** matches (all competitions in your data), before kickoff. **Avg** = mean of the two; the list is sorted by it,
+  highest first. Expand a row for the combined total, how many of the 10 matches had shots data, and (for past days) the actual shots.
+- **Expected shots (xS) and Total:** the same for/against idea as xG, fitted on shots: the home team's shots-for strength against the
+  away team's shots-conceded weakness (and the reverse), with recency weighting and opponent adjustment (`SHOTS_HALF_LIFE`, `SHOTS_RIDGE`).
+  A second list, **Total expected shots**, sits right after the Average shots list and ranks fixtures by home xS + away xS.
+  Expand a row to see the strength indices (×1.00 = league average). Run `python shots_tests.py` to check these settings on your data.
+- **Date:** Prev / Next / Today or the calendar. Past days come from `matches.csv`; today and tomorrow from the saved picks; a later
+  day needs the button "Look up fixtures" (about one request per league, cached for 6 hours).
+- **Data:** shots are read from the same `/events/{id}/stats/` response as xG and stored in `data/shots_cache.csv`.
+  The automation starts fetching as soon as `python app.py` is running: up to `SHOTS_DAILY_BUDGET` (default 1000) requests per UTC day in total,
+  starting with the last-10 windows of today's teams, then every other finished match newest first, until the whole database is covered.
+  The xG upgrade also saves shots from requests it already makes. **Fetch missing shots** on the tab is now just a manual top-up.
+  `python shots_data.py --all` fetches everything in one go (resumable, stops at the first quota error; `--all 2000` caps it).
+- **First run:** nothing to do, the automation fills the cache on its own.
+  If it finds nothing, run `python shots_data.py --probe EVENT_ID` to see the API's field names and set `SHOTS_STAT_KEYS = [...]` in `config.py`.
+
+**Shots are blended into the goals model (on by default, weight 0.2):** the expected goals behind Over/Under 2.5, BTTS and the history mix
+shots-based expected goals (expected shots x league goals per shot) at weight 0.2 with the goals model. On 2,605 real matches weights of 0.2-0.3
+improved goals log loss by 0.0017-0.0022 (best weight ~0.4, interval just touching 0), so the gain is small. Set `SHOTS_BLEND_WEIGHT = 0` in
+`config.py` to switch it off. Fixtures where either team has no shots history use the plain goals model.
+Real-data tests also showed a 180-day half-life suits shots better than 365 (now the default), and that recency weights inside the last-10 Avg do not help.
+
+Optional settings: `SHOTS_AVG_DECAY = 1.0` (recency weight inside the last-10 Avg; 1.0 = plain average, try 0.9 once `shots_tests.py` supports it on your data), `SHOTS_DAILY_BUDGET = 1000`, `SHOTS_WINDOW = 10`, `SHOTS_STAT_KEYS = []`.
 
 ## Leagues covered
 
@@ -280,6 +323,8 @@ soccer-value-bets/
 ├── model.py                # Goals model (ridge Poisson)
 ├── acca_builder.py         # Acca builder: most probable combination for Over/Under 2.5 or BTTS, real odds only
 ├── btts_model.py           # BTTS model
+├── match_stats.py          # Full match-stats store + Trends engine (python match_stats.py --status | --fill N; python stats_probe.py --scan)
+├── shots_data.py           # Shots cache, last-10 home/away averages, Shots tab data (python shots_data.py --probe ID)
 ├── btts_backtest.py        # BTTS backtest / calibration
 ├── scan.py                 # Upcoming fixtures + picks + odds
 ├── results_extra.py        # BTTS predictions and per-side hit rates for the Results tab

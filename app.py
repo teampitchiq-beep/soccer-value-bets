@@ -33,6 +33,8 @@ import config as _config
 XG_DAILY_BUDGET = int(getattr(_config, "XG_DAILY_BUDGET", 400))           # real-xG requests per day (0 = off)
 XG_ENRICH_AT_STARTUP = bool(getattr(_config, "XG_ENRICH_AT_STARTUP", False))  # True = fetch ALL xG on a first run
 AUTOMATION_INTERVAL_SECONDS = int(getattr(_config, "AUTOMATION_INTERVAL_SECONDS", 15 * 60))
+STATS_DAILY_BUDGET = int(getattr(_config, "STATS_DAILY_BUDGET", 600))          # Trends stats requests per UTC day (0 = off)
+SHOTS_DAILY_BUDGET = int(getattr(_config, "SHOTS_DAILY_BUDGET", 1000))         # shots requests per UTC day (0 = off)
 
 app = Flask(__name__)
 
@@ -511,7 +513,8 @@ def _mark_job_done(name, now=None):
 # A step that fails retries an hour later. A quota failure (429) holds every API step until the quota resets.
 STATUS_FILE = os.path.join(DATA_DIR, "automation_status.json")
 STEP_LABELS = {"recent_fetch": "Finished matches", "fixtures_scan": "Fixtures, odds & picks",
-               "xg_upgrade": "Real xG upgrade", "results_warm": "Results grading"}
+               "xg_upgrade": "Real xG upgrade", "shots_upgrade": "Team shots data", "stats_upgrade": "Match stats (Trends)",
+               "results_warm": "Results grading"}
 _RETRY_AT = {}
 _QUOTA_HOLD_UNTIL = [0.0]
 _status_lock = threading.Lock()
@@ -595,6 +598,44 @@ def _step_xg_upgrade():
     return {"ok": not all_failed, "quota": st["quota_hit"], "detail": detail}
 
 
+def _step_shots_upgrade():
+    """Fetches shots for every finished match that lacks them, up to SHOTS_DAILY_BUDGET requests per UTC day in total
+    (restarts and the Shots tab button count too). Runs right after startup, and keeps going on later days until done."""
+    import shots_data as SD
+    if SHOTS_DAILY_BUDGET <= 0:
+        return {"ok": True, "quota": False, "detail": "off (SHOTS_DAILY_BUDGET = 0)"}
+    allowed = SHOTS_DAILY_BUDGET - SD.used_today()
+    if allowed <= 0:
+        return {"ok": True, "quota": False, "detail": f"today's budget of {SHOTS_DAILY_BUDGET} requests is used"}
+    upcoming = (_MATCHES_CACHE.get("data") or {}).get("matches") or []
+    st = SD.fetch_all_shots(budget=allowed, upcoming=upcoming, verbose=True)
+    cov = SD.coverage()
+    detail = (f"{st['ok']} fetched, {st['none']} without shots · shots on {cov['pct']}% of {cov['matches']} matches"
+              + (f", {st['left']} to go" if st["left"] else ", all done")
+              + (" · quota used up, continues tomorrow" if st["quota_hit"] else ""))
+    all_failed = st["asked"] > 0 and st["errors"] == st["asked"]
+    return {"ok": not all_failed, "quota": st["quota_hit"], "detail": detail}
+
+
+def _step_stats_upgrade():
+    """Full match stats (shots, corners, fouls, cards ...) for the Trends tab: up to STATS_DAILY_BUDGET requests per UTC day,
+    starting with the last-10 matches of the teams in the upcoming fixtures, then everything else newest first."""
+    import match_stats as MS
+    if STATS_DAILY_BUDGET <= 0:
+        return {"ok": True, "quota": False, "detail": "off (STATS_DAILY_BUDGET = 0)"}
+    allowed = STATS_DAILY_BUDGET - MS.used_today()
+    if allowed <= 0:
+        return {"ok": True, "quota": False, "detail": f"today's budget of {STATS_DAILY_BUDGET} requests is used"}
+    upcoming = (_MATCHES_CACHE.get("data") or {}).get("matches") or []
+    st = MS.upgrade_stats(budget=allowed, upcoming=upcoming, verbose=True)
+    cov = MS.coverage()
+    detail = (f"{st['ok']} stored, {st['none']} without stats · full stats on {cov['pct']}% of {cov['matches']} matches"
+              + (f", {st['left']} to go" if st["left"] else ", all done")
+              + (" · quota used up, continues tomorrow" if st["quota_hit"] else ""))
+    all_failed = st["asked"] > 0 and st["errors"] == st["asked"]
+    return {"ok": not all_failed, "quota": st["quota_hit"], "detail": detail}
+
+
 def _step_results_warm():
     if DF is None:
         return {"ok": False, "quota": False, "detail": "data not loaded yet"}
@@ -603,7 +644,8 @@ def _step_results_warm():
 
 
 STEPS = [("recent_fetch", _step_recent_fetch, True), ("fixtures_scan", _step_fixtures_scan, True),
-         ("xg_upgrade", _step_xg_upgrade, True), ("results_warm", _step_results_warm, False)]
+         ("xg_upgrade", _step_xg_upgrade, True), ("shots_upgrade", _step_shots_upgrade, True), ("stats_upgrade", _step_stats_upgrade, True),
+         ("results_warm", _step_results_warm, False)]
 
 
 def run_automation_cycle(now=None):
@@ -779,6 +821,14 @@ def find_team_local(df, name, league_id=None):
     return None, None
 
 
+def _shots_window():
+    try:
+        import shots_data
+        return shots_data.SHOTS_WINDOW
+    except Exception:
+        return 10
+
+
 @app.route("/", methods=["GET", "POST"])
 def index():
     from model import full_prediction
@@ -900,6 +950,7 @@ def index():
         acca_days=acca_days,                  # [{"iso", "label", "count"}]: days that still have upcoming fixtures
         acca_cfg=acca_cfg,                    # market list + default settings for the Acca tab
         teams_by_league=teams_by_league,
+        shots_window=_shots_window(),
         btts_rows=sorted(btts_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
     )
 
@@ -939,6 +990,95 @@ def api_acca():
             min_combined=num("min_combined", AB.DEFAULT_MIN_COMBINED, 1.01, 1000.0))
     except ValueError as e:
         return jsonify({"ok": False, "message": str(e)}), 400
+    return jsonify(res)
+
+
+def _shots_fixtures(iso, allow_api):
+    """Fixtures for one Nairobi day: finished matches on disk + today's saved picks. If the day is today or later
+    and nothing upcoming is known, the API is asked only when allow_api is True (one request per league)."""
+    import shots_data as SD
+    data = load_matches() if DF is not None else {"matches": []}
+    fixtures = SD.day_fixtures(iso, data.get("matches", []))
+    needs_load, err = False, None
+    if iso >= datetime.now(EAT).strftime("%Y-%m-%d") and not any(f["status"] == "upcoming" for f in fixtures):
+        if allow_api:
+            extra, err = SD.fetch_fixtures_for_day(iso)
+            seen = {f["event_id"] for f in fixtures}
+            fixtures += [f for f in extra if f["event_id"] not in seen]
+        else:
+            needs_load = True
+    return fixtures, needs_load, err
+
+
+@app.route("/api/shots")
+def api_shots():
+    """Shots per team for one Nairobi day (?date=YYYY-MM-DD; past or future). Reads local files only, unless
+    load=1 is given for a day with no known fixtures (then one request per league fetches them)."""
+    import shots_data as SD
+    iso = (request.args.get("date") or datetime.now(EAT).strftime("%Y-%m-%d")).strip()
+    try:
+        datetime.strptime(iso, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"ok": False, "message": "Bad date."}), 400
+    fixtures, needs_load, err = _shots_fixtures(iso, request.args.get("load") == "1")
+    rows, cov = SD.build_rows(fixtures)
+    cov.pop("fetchable_ids", None)
+    return jsonify({"ok": True, "date": iso, "rows": rows, "coverage": cov, "needs_load": needs_load,
+                    "error": err, "window": SD.SHOTS_WINDOW, "overall": SD.coverage()})
+
+
+@app.route("/api/shots/fill", methods=["POST"])
+def api_shots_fill():
+    """Fetch the shots still missing behind one day's fixtures (spends API requests, capped)."""
+    import shots_data as SD
+    body = request.get_json(silent=True) or {}
+    iso = str(body.get("date") or "")
+    try:
+        datetime.strptime(iso, "%Y-%m-%d")
+        limit = max(1, min(int(body.get("limit", 200)), 400))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "message": "Bad request."}), 400
+    fixtures, _nl, _err = _shots_fixtures(iso, False)
+    ids = SD.missing_ids_for(fixtures)
+    res = SD.fetch_shots(ids, budget=limit, verbose=True)
+    res.update(success=True, remaining=max(len(ids) - res["ok"] - res["none"], 0))
+    return jsonify(res)
+
+
+@app.route("/api/trends")
+def api_trends():
+    """Last-10 trend cards for the teams playing on one Nairobi day (?date=YYYY-MM-DD&min_hits=10). Local files only,
+    unless load=1 is given for a day with no known fixtures (then one request per league fetches them)."""
+    import match_stats as MS
+    iso = (request.args.get("date") or datetime.now(EAT).strftime("%Y-%m-%d")).strip()
+    try:
+        datetime.strptime(iso, "%Y-%m-%d")
+        min_hits = max(7, min(int(request.args.get("min_hits", 10)), 10))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "message": "Bad request."}), 400
+    fixtures, needs_load, err = _shots_fixtures(iso, request.args.get("load") == "1")
+    cards, info = MS.build_cards(fixtures, min_hits=min_hits)
+    return jsonify({"ok": True, "date": iso, "cards": cards[:1500], "total_cards": len(cards), "fixtures": len(fixtures),
+                    "info": info, "needs_load": needs_load, "error": err, "overall": MS.coverage(),
+                    "markets": [{"key": k, "label": v[0]} for k, v in MS.MARKETS.items()] + [{"key": k, "label": v} for k, v in MS.GOAL_MARKETS.items()],
+                    "variants": [{"key": k, "label": v} for k, v in MS.VARIANTS.items()]})
+
+
+@app.route("/api/trends/fill", methods=["POST"])
+def api_trends_fill():
+    """Fetch the match stats still missing behind one day's fixtures (each team's last 10 matches); spends API requests, capped."""
+    import match_stats as MS
+    body = request.get_json(silent=True) or {}
+    iso = str(body.get("date") or "")
+    try:
+        datetime.strptime(iso, "%Y-%m-%d")
+        limit = max(1, min(int(body.get("limit", 300)), 500))
+    except (ValueError, TypeError):
+        return jsonify({"ok": False, "message": "Bad request."}), 400
+    fixtures, _nl, _err = _shots_fixtures(iso, False)
+    ids = MS.needed_ids(fixtures)
+    res = MS.fetch_stats(ids, budget=limit, verbose=True)
+    res.update(success=True, remaining=max(len(ids) - res["ok"] - res["none"], 0))
     return jsonify(res)
 
 

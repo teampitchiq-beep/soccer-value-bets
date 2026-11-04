@@ -154,7 +154,13 @@ def predict_lambdas(df, home_team_id, away_team_id, league_id=None):
     LAMBDA_BOOST (now a small calibration factor, ~1.06).
     """
     fit = _get_fit(df)
-    return lambdas_from_fit(fit, home_team_id, away_team_id, league_id)
+    lh, la = lambdas_from_fit(fit, home_team_id, away_team_id, league_id)
+    try:                                    # blend in shots-based expected goals (weight SHOTS_BLEND_WEIGHT, default 0.2; 0 = off)
+        import shots_data
+        lh, la = shots_data.blend_with_goals(df, home_team_id, away_team_id, league_id, lh, la)
+    except Exception:
+        pass                                # never let the shots blend break the goals model
+    return lh, la
 
 
 # ---------------------------------------------------------------- probabilities

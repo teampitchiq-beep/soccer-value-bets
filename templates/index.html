@@ -95,6 +95,63 @@
         .acca-warn { margin-top: 12px; padding: 10px 12px; border-radius: 10px; font-size: .8rem; background: #3b2a06; border: 1px solid #eab308; color: #fde68a; }
         .acca-none { margin-top: 16px; padding: 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
         .acca-none b { display: block; margin-bottom: 6px; }
+        /* Shots tab */
+        .shr { grid-template-columns: 46px minmax(0, 1fr) 78px 52px 30px !important; }
+        .shr .hcell, .shr .hide-sm { display: none; }
+        .shr .num { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; font-size: .9rem; }
+        .shr .avg { font-weight: 800; font-size: 1rem; color: var(--gold); }
+        .shr .ha { font-size: .78rem; line-height: 1.3; }
+        .shr .low { color: var(--muted); }
+        .shr .inc { color: var(--muted); font-weight: 400; }
+        @media (min-width: 640px) {
+            .shr { grid-template-columns: 54px minmax(0, 1fr) 72px 72px 70px 34px !important; }
+            .shr .hide-sm { display: block; }
+            .shr .only-sm { display: none; }
+        }
+        .shr .xs { display: block; font-weight: 500; font-size: .68rem; color: var(--muted); line-height: 1.2; }
+        .shr .xs-i { font-weight: 500; font-size: .7rem; color: var(--muted); margin-left: 3px; }
+        .shr.shr2 { grid-template-columns: 42px minmax(0, 1fr) 74px 46px 46px 28px !important; }
+        .shr .tot { color: var(--text, #fff); }
+        @media (min-width: 640px) {
+            .shr.shr2 { grid-template-columns: 54px minmax(0, 1fr) 74px 74px 62px 72px 34px !important; }
+        }
+        /* Trends tab */
+        .tfilters { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 14px; }
+        .tfilters .seg { margin: 0; }
+        .trow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .trow select, .trow input[type=text] { background: #1a1a1a; color: #fff; border: 1px solid #333; border-radius: 8px; padding: 8px 10px; font: inherit; min-width: 0; }
+        .trow input[type=text] { flex: 1 1 140px; }
+        .trow label { color: var(--muted); font-size: .8rem; display: flex; gap: 6px; align-items: center; }
+        .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 14px; }
+        .tcard { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+        .tcard .tname { font-weight: 800; font-size: 1.05rem; }
+        .tcard .tsub { color: var(--muted); font-size: .78rem; letter-spacing: .04em; text-transform: uppercase; }
+        .tcard .tsub b { font-size: 1rem; letter-spacing: 0; text-transform: none; margin-left: 6px; }
+        .tcard .tsub b.over { color: var(--over); }
+        .tcard .tsub b.under { color: var(--under); }
+        .tmeta { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .thit { font-size: .78rem; color: var(--muted); letter-spacing: .05em; }
+        .thit b { font-size: 1.15rem; color: var(--win); margin: 0 4px 0 6px; letter-spacing: 0; }
+        .tmodel { font-size: .8rem; color: var(--gold); font-weight: 700; }
+        .tmodel span { color: var(--muted); font-weight: 400; }
+        .tchips { display: flex; gap: 8px; flex-wrap: wrap; }
+        .tchips span { background: #1a1a1d; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: .8rem; color: var(--muted); }
+        .tchips span b { color: var(--text); margin-left: 4px; }
+        .tchart { position: relative; height: 180px; display: flex; gap: 4px; align-items: flex-end; padding: 18px 0 0 0; }
+        .tcol { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
+        .tbarwrap { flex: 1; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
+        .tval { font-size: .72rem; font-weight: 700; margin-bottom: 2px; }
+        .tbar { width: 78%; border-radius: 4px 4px 0 0; min-height: 3px; }
+        .tbar.hit { background: var(--win); } .tbar.miss { background: var(--lose); opacity: .85; } .tbar.na { background: #444; }
+        .tfoot { height: 56px; flex: none; font-size: .6rem; color: var(--muted); text-align: center; line-height: 1.25; margin-top: 3px; white-space: nowrap; }
+        .tfoot .oc { display: inline-block; background: #1f1f23; border: 1px solid var(--line); border-radius: 50%; width: 26px; height: 26px; line-height: 24px; font-size: .55rem; font-weight: 800; color: var(--text); }
+        .tline { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--gold); pointer-events: none; }
+        .tline span { position: absolute; left: 0; top: -11px; background: var(--gold); color: #111; font-size: .68rem; font-weight: 800; border-radius: 6px; padding: 0 5px; }
+        .tnext { display: flex; justify-content: space-between; gap: 8px; align-items: center; background: #0c0c0e; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: .84rem; }
+        .tnext .k { color: var(--muted); font-size: .68rem; letter-spacing: .05em; }
+        .tnext .ko { color: var(--gold); font-weight: 800; }
+        .shots-ctl { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; margin: 10px 0 4px; }
+        .shots-ctl .btn-dark, .shots-ctl button { cursor: pointer; }
     </style>
 </head>
 <body>
@@ -129,6 +186,8 @@
         <button class="x" type="button" onclick="toggleDrawer()" aria-label="Close">×</button>
         <h3>Quick Links</h3>
         <button class="dl" type="button" onclick="goTab('matches')">📅 All Matches</button>
+        <button class="dl" type="button" onclick="goTab('trends')">📈 Trends</button>
+        <button class="dl" type="button" onclick="goTab('shots')">📊 Shots</button>
         <button class="dl" type="button" onclick="goTab('acca')">🎯 Acca</button>
         <button class="dl" type="button" onclick="goTab('btts')">⚽ BTTS</button>
         <button class="dl" type="button" onclick="goTab('results')">📋 Results</button>
@@ -143,6 +202,12 @@
             </button>
             <button class="tab" data-tab="btts" onclick="switchTab('btts', this)">
                 ⚽ BTTS <span class="badge-count">{{ btts_rows|length }}</span>
+            </button>
+            <button class="tab" data-tab="trends" onclick="switchTab('trends', this)">
+                📈 Trends
+            </button>
+            <button class="tab" data-tab="shots" onclick="switchTab('shots', this)">
+                📊 Shots
             </button>
             <button class="tab" data-tab="acca" onclick="switchTab('acca', this)">
                 🎯 Acca
@@ -334,6 +399,96 @@
                 <div class="empty">No upcoming matches to predict.<br>
                     <span class="hint">BTTS uses the same fixtures as All Matches.</span></div>
             {% endif %}
+        </section>
+
+        <!-- ================= TRENDS ================= -->
+        <section id="trends" class="panel">
+            <div class="pill-title"><span>Trends · Last 10 Matches</span></div>
+            <div class="hint" style="margin:-6px 0 12px;">
+                For every team playing on the chosen day: the most demanding line (Over / Under) that its last 10 matches, home and away together, still cleared.
+                <b>For</b> = the team's own number, <b>Against</b> = what it conceded, <b>Match total</b> = both teams. <b>Model</b> is the probability of that line in <i>this</i> fixture
+                (opponent-adjusted expected value with a negative binomial spread). A streak describes the past; the model says how likely it is now.
+            </div>
+            <div class="seg" style="align-items:center;">
+                <button type="button" onclick="shiftTrendsDate(-1)">‹ Prev</button>
+                <input type="date" id="trendsPick" onchange="loadTrends(false)"
+                       style="background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 10px;font:inherit;">
+                <button type="button" onclick="shiftTrendsDate(1)">Next ›</button>
+                <button type="button" onclick="setTrendsDate(isoPlus(0))">Today</button>
+            </div>
+            <div class="date-headline" id="trendsHeadline"></div>
+            <div class="hint" id="trendsCoverage" style="text-align:center;"></div>
+            <div class="shots-ctl" id="trendsActions"></div>
+            <div class="tfilters">
+                <div class="seg" id="tMarkets"></div>
+                <div class="seg" id="tVariants"></div>
+                <div class="seg" id="tSides"></div>
+                <div class="trow">
+                    <select id="tMinHits" onchange="loadTrends(false, true)">
+                        <option value="10">10 / 10</option><option value="9">9 / 10 or better</option><option value="8">8 / 10 or better</option>
+                    </select>
+                    <select id="tSort" onchange="renderTrends()">
+                        <option value="hits">Sort: hit rate, then model</option>
+                        <option value="model">Sort: model probability</option>
+                        <option value="time">Sort: kickoff</option>
+                    </select>
+                    <input type="text" id="tTeam" placeholder="Search team…" oninput="renderTrends()">
+                    <label><input type="checkbox" id="tReal" checked onchange="renderTrends()"> Realistic lines only (model 35–92%)</label>
+                </div>
+            </div>
+            <div class="tgrid" id="trendsGrid"></div>
+            <div class="shots-ctl"><button type="button" class="btn-dark" id="trendsMore" style="display:none;" onclick="trendsLimit += 30; renderTrends();">Show more</button></div>
+            <div class="no-filter-results" id="trendsNone">No trends match these filters.</div>
+        </section>
+
+        <!-- ================= SHOTS ================= -->
+        <section id="shots" class="panel">
+            <div class="pill-title"><span>Team Shots · Last {{ shots_window }} Home / Away</span></div>
+            <div class="hint" style="margin:-6px 0 12px;">
+                Home team: average shots in its last {{ shots_window }} <b>home</b> matches. Away team: average shots in its last {{ shots_window }} <b>away</b> matches.
+                <b>Avg</b> is the mean of the two; fixtures are listed highest first. Only matches before kickoff count, so any past or future date can be checked.
+                <br><b>Expected shots (xS)</b> work like xG: the home team's shots-for strength against the away team's shots-conceded weakness (and the reverse), fitted on all shots history with recency weighting and opponent adjustment.
+            </div>
+            <div class="seg" style="align-items:center;">
+                <button type="button" onclick="shiftShotsDate(-1)">‹ Prev</button>
+                <input type="date" id="shotsPick" onchange="loadShots(false)"
+                       style="background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 10px;font:inherit;">
+                <button type="button" onclick="shiftShotsDate(1)">Next ›</button>
+                <button type="button" onclick="setShotsDate(isoPlus(0))">Today</button>
+            </div>
+            <div class="date-headline" id="shotsHeadline"></div>
+            <div class="hint" id="shotsCoverage" style="text-align:center;"></div>
+            <div class="shots-ctl" id="shotsActions"></div>
+            <div class="sec-bar">Average shots · highest first</div>
+            <div class="hint" style="margin:6px 2px 8px;">Home / Away show the last-10 average, with the model's <b>expected shots (xS)</b> underneath. <b>xS Tot</b> = home xS + away xS.</div>
+            <div class="mlist">
+                <div class="mhead shr shr2">
+                    <span class="c">League</span>
+                    <span>Match</span>
+                    <span class="c only-sm">H / A</span>
+                    <span class="c hide-sm">Home</span>
+                    <span class="c hide-sm">Away</span>
+                    <span class="c">Avg</span>
+                    <span class="c">xS Tot</span>
+                    <span></span>
+                </div>
+                <div id="shotsRows"></div>
+            </div>
+            <div class="no-filter-results" id="shotsNone">No fixtures on this date.</div>
+
+            <div class="sec-bar" id="shotsTotBar" style="margin-top:18px;">Total expected shots · highest first</div>
+            <div class="mlist" id="shotsTotList">
+                <div class="mhead shr">
+                    <span class="c">League</span>
+                    <span>Match</span>
+                    <span class="c only-sm">xS H / A</span>
+                    <span class="c hide-sm">Home xS</span>
+                    <span class="c hide-sm">Away xS</span>
+                    <span class="c">Total</span>
+                    <span></span>
+                </div>
+                <div id="shotsTotRows"></div>
+            </div>
         </section>
 
         <!-- ================= ACCA ================= -->
@@ -680,6 +835,8 @@
                 el.scrollIntoView({inline: 'center', block: 'nearest'});
             }
             document.getElementById(name).classList.add('active');
+            if (name === 'shots' && !shotsReady) { shotsReady = true; setShotsDate(isoPlus(0)); }
+            if (name === 'trends' && !trendsReady) { trendsReady = true; setTrendsDate(isoPlus(0)); }
         }
 
         function goTab(name) {
@@ -971,6 +1128,234 @@
                 } finally { go.disabled = false; }
             });
         })();
+
+        // ---- Shots tab -------------------------------------------------------------------------
+        let shotsReady = false, shotsBusy = false;
+        const escS = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+        const f1 = v => (v == null ? '—' : Number(v).toFixed(1));
+        const LGMAP = {{ {'Premier League': 'EPL', 'La Liga': 'LAL', 'Serie A': 'SA', 'Bundesliga': 'BUN', 'Ligue 1': 'L1', 'Champions League': 'UCL', 'Europa League': 'UEL', 'Conference League': 'UECL', 'Eredivisie': 'NED', 'Liga Portugal': 'POR', 'Süper Lig': 'TUR', 'Brasileirão Série A': 'BRA', 'Eliteserien': 'NOR', 'Swiss Super League': 'SUI'}|tojson }};
+
+        function setShotsDate(iso) { document.getElementById('shotsPick').value = iso; loadShots(false); }
+        function shiftShotsDate(delta) {
+            const el = document.getElementById('shotsPick');
+            const d = new Date((el.value || isoPlus(0)) + 'T12:00:00Z');
+            d.setUTCDate(d.getUTCDate() + delta);
+            setShotsDate(d.toISOString().slice(0, 10));
+        }
+
+        function shotsRow(r) {
+            const lg = LGMAP[r.league] || r.league.slice(0, 3).toUpperCase();
+            const lowH = r.home_n < Math.min(5, r.home_window || 5) ? ' low' : '';
+            const lowA = r.away_n < Math.min(5, r.away_window || 5) ? ' low' : '';
+            let det = '<div><div class="k">Combined (home + away)</div><div class="v">' + f1(r.combined) + '</div></div>' +
+                '<div><div class="k">' + escS(r.home) + ' (home)</div><div class="v">' + f1(r.home_avg) + ' <span class="hint">from ' + r.home_n + ' of last ' + r.home_window + '</span></div></div>' +
+                '<div><div class="k">' + escS(r.away) + ' (away)</div><div class="v">' + f1(r.away_avg) + ' <span class="hint">from ' + r.away_n + ' of last ' + r.away_window + '</span></div></div>' +
+                '<div><div class="k">Kickoff</div><div class="v">' + escS(r.kickoff) + ' EAT</div></div>' +
+                '<div><div class="k">League</div><div class="v">' + escS(r.league) + '</div></div>';
+            if (r.xs_total != null) det += '<div><div class="k">Expected shots (H – A)</div><div class="v">' + f1(r.xs_home) + ' – ' + f1(r.xs_away) + ' <span class="hint">total ' + f1(r.xs_total) + '</span></div></div>';
+            if (r.status === 'finished') {
+                det += '<div><div class="k">Final score</div><div class="v">' + escS(r.score || '—') + '</div></div>';
+                if (r.actual_home != null) det += '<div><div class="k">Actual shots (H – A)</div><div class="v">' + f1(r.actual_home) + ' – ' + f1(r.actual_away) + '</div></div>';
+            }
+            const xsH = r.xs_home != null ? '<span class="xs">xS ' + f1(r.xs_home) + '</span>' : '';
+            const xsA = r.xs_away != null ? '<span class="xs">xS ' + f1(r.xs_away) + '</span>' : '';
+            const xsHi = r.xs_home != null ? '<span class="xs-i">' + f1(r.xs_home) + '</span>' : '';
+            const xsAi = r.xs_away != null ? '<span class="xs-i">' + f1(r.xs_away) + '</span>' : '';
+            return '<div class="mrow shr shr2" onclick="toggleRow(this)">' +
+                '<div class="mleague"><span class="lgcode">' + escS(lg) + '</span><span class="ko">' + escS(r.kickoff) + '</span></div>' +
+                '<div class="mteams"><span class="t">' + escS(r.home) + '</span><span class="t">' + escS(r.away) + '</span></div>' +
+                '<div class="num ha only-sm"><span class="' + lowH + '">' + f1(r.home_avg) + '</span>' + xsHi + '<br><span class="' + lowA + '">' + f1(r.away_avg) + '</span>' + xsAi + '</div>' +
+                '<div class="num hide-sm' + lowH + '">' + f1(r.home_avg) + xsH + '</div>' +
+                '<div class="num hide-sm' + lowA + '">' + f1(r.away_avg) + xsA + '</div>' +
+                '<div class="num avg">' + (r.complete ? f1(r.avg) : '<span class="inc">n/a</span>') + '</div>' +
+                '<div class="num tot">' + (r.xs_total != null ? f1(r.xs_total) : '<span class="inc">n/a</span>') + '</div>' +
+                '<button class="mstat" type="button" aria-label="Details">▾</button>' +
+                '<div class="mdetail">' + det + '</div></div>';
+        }
+
+        function shotsTotRow(r) {
+            const lg = LGMAP[r.league] || r.league.slice(0, 3).toUpperCase();
+            const idx = v => (v == null ? '—' : '×' + Number(v).toFixed(2));
+            let det = '<div><div class="k">' + escS(r.home) + ' shots-for strength</div><div class="v">' + idx(r.home_for) + '</div></div>' +
+                '<div><div class="k">' + escS(r.away) + ' shots-conceded</div><div class="v">' + idx(r.away_conceded) + '</div></div>' +
+                '<div><div class="k">' + escS(r.away) + ' shots-for strength</div><div class="v">' + idx(r.away_for) + '</div></div>' +
+                '<div><div class="k">' + escS(r.home) + ' shots-conceded</div><div class="v">' + idx(r.home_conceded) + '</div></div>' +
+                '<div><div class="k">Last-10 Avg (home / away)</div><div class="v">' + f1(r.home_avg) + ' / ' + f1(r.away_avg) + '</div></div>' +
+                '<div><div class="k">Kickoff</div><div class="v">' + escS(r.kickoff) + ' EAT</div></div>';
+            if (r.status === 'finished' && r.actual_home != null)
+                det += '<div><div class="k">Actual shots (H – A)</div><div class="v">' + f1(r.actual_home) + ' – ' + f1(r.actual_away) + ' <span class="hint">total ' + f1(r.actual_home + r.actual_away) + '</span></div></div>';
+            det += '<div class="hint" style="grid-column:1/-1;">Strength ×1.00 = league average. Above 1 = more shots taken / more conceded than average.</div>';
+            return '<div class="mrow shr" onclick="toggleRow(this)">' +
+                '<div class="mleague"><span class="lgcode">' + escS(lg) + '</span><span class="ko">' + escS(r.kickoff) + '</span></div>' +
+                '<div class="mteams"><span class="t">' + escS(r.home) + '</span><span class="t">' + escS(r.away) + '</span></div>' +
+                '<div class="num ha only-sm">' + f1(r.xs_home) + '<br>' + f1(r.xs_away) + '</div>' +
+                '<div class="num hide-sm">' + f1(r.xs_home) + '</div>' +
+                '<div class="num hide-sm">' + f1(r.xs_away) + '</div>' +
+                '<div class="num avg">' + f1(r.xs_total) + '</div>' +
+                '<button class="mstat" type="button" aria-label="Details">▾</button>' +
+                '<div class="mdetail">' + det + '</div></div>';
+        }
+
+        function renderShotsTotals(rows) {
+            const withXs = rows.filter(r => r.xs_total != null).sort((a, b) => b.xs_total - a.xs_total);
+            const bar = document.getElementById('shotsTotBar'), list = document.getElementById('shotsTotList');
+            document.getElementById('shotsTotRows').innerHTML = withXs.map(shotsTotRow).join('');
+            const show = rows.length > 0;
+            bar.style.display = list.style.display = show ? '' : 'none';
+            if (show && !withXs.length)
+                document.getElementById('shotsTotRows').innerHTML = '<div class="hint" style="padding:14px;text-align:center;">Not enough shots history yet to estimate expected shots for these teams.</div>';
+        }
+
+        async function loadShots(load, quiet) {
+            const iso = document.getElementById('shotsPick').value || isoPlus(0);
+            const rows = document.getElementById('shotsRows'), acts = document.getElementById('shotsActions');
+            const cov = document.getElementById('shotsCoverage'), none = document.getElementById('shotsNone');
+            document.getElementById('shotsHeadline').textContent = headline(iso);
+            if (!quiet) { rows.innerHTML = '<div class="hint" style="padding:14px;text-align:center;">Loading…</div>'; }
+            acts.innerHTML = ''; none.style.display = 'none';
+            try {
+                const r = await fetch('/api/shots?date=' + iso + (load ? '&load=1' : ''));
+                const d = await r.json();
+                if (!d.ok) { rows.innerHTML = ''; renderShotsTotals([]); cov.textContent = d.message || 'Could not load.'; return; }
+                rows.innerHTML = d.rows.map(shotsRow).join('');
+                renderShotsTotals(d.rows);
+                none.style.display = d.rows.length ? 'none' : 'block';
+                const c = d.coverage;
+                cov.textContent = d.rows.length
+                    ? 'Shots data behind these fixtures: ' + c.have + ' of ' + c.needed + ' matches' + (c.missing ? ' (' + c.missing + ' missing)' : '') +
+                      ' · overall ' + d.overall.pct + '% of ' + d.overall.matches + ' finished matches'
+                    : (d.error ? d.error : '');
+                if (d.needs_load) {
+                    acts.innerHTML = '<button type="button" class="btn-dark" id="shotsLoadBtn">Look up fixtures for this day (about one API request per league)</button>';
+                    document.getElementById('shotsLoadBtn').onclick = () => loadShots(true);
+                }
+                if (d.error && d.rows.length === 0) cov.textContent = d.error;
+                if (c.fetchable > 0) {
+                    const n = Math.min(c.fetchable, 200);
+                    acts.innerHTML += '<button type="button" class="btn-gold" id="shotsFillBtn">Fetch missing shots (' + n + ' API requests)</button>';
+                    document.getElementById('shotsFillBtn').onclick = async function () {
+                        this.disabled = true; this.textContent = 'Fetching…';
+                        try {
+                            const fr = await fetch('/api/shots/fill', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({date: iso, limit: 200})});
+                            const fd = await fr.json();
+                            await loadShots(false, true);
+                            if (fd.quota_hit) document.getElementById('shotsCoverage').textContent += ' · API quota used up: try again after 03:00 Nairobi time';
+                            else if (fd.asked && fd.ok === 0 && fd.none === fd.asked) document.getElementById('shotsCoverage').textContent += ' · the API returned no shots for these matches';
+                        } catch (e) { this.textContent = 'Failed: ' + e; }
+                    };
+                }
+            } catch (e) {
+                rows.innerHTML = ''; renderShotsTotals([]); cov.textContent = 'Could not load shots: ' + e;
+            }
+        }
+
+        // ---- Trends tab ------------------------------------------------------------------------
+        let trendsReady = false, trendsData = null, trendsLimit = 30;
+        const tSel = {market: 'all', variant: 'all', side: 'all'};
+        const initials = n => String(n || '').replace(/^(FC|AS|SSC|RC|SK|VfB|AC|AFC|1\.)\s+/i, '').slice(0, 3).toUpperCase();
+        const fmtLine = v => Number(v).toFixed(1);
+
+        function setTrendsDate(iso) { document.getElementById('trendsPick').value = iso; loadTrends(false); }
+        function shiftTrendsDate(delta) {
+            const el = document.getElementById('trendsPick');
+            const d = new Date((el.value || isoPlus(0)) + 'T12:00:00Z');
+            d.setUTCDate(d.getUTCDate() + delta);
+            setTrendsDate(d.toISOString().slice(0, 10));
+        }
+
+        function chipRow(id, items, key) {
+            document.getElementById(id).innerHTML = items.map(i =>
+                '<button type="button" class="' + (tSel[key] === i.key ? 'active' : '') + '" data-k="' + escS(i.key) + '">' + escS(i.label) + '</button>').join('');
+            document.querySelectorAll('#' + id + ' button').forEach(b => b.onclick = () => { tSel[key] = b.dataset.k; trendsLimit = 30; drawChips(); renderTrends(); });
+        }
+        function drawChips() {
+            if (!trendsData) return;
+            chipRow('tMarkets', [{key: 'all', label: 'All stats'}].concat(trendsData.markets), 'market');
+            chipRow('tVariants', [{key: 'all', label: 'All views'}].concat(trendsData.variants), 'variant');
+            chipRow('tSides', [{key: 'all', label: 'All sides'}, {key: 'Over', label: 'Over'}, {key: 'Under', label: 'Under'}, {key: 'Yes', label: 'BTTS Yes'}, {key: 'No', label: 'BTTS No'}], 'side');
+        }
+
+        function trendCard(c) {
+            const vals = c.bars.map(b => b.v).filter(v => v != null);
+            const hasLine = c.line != null;
+            const top = Math.max(Math.max.apply(null, vals), hasLine ? c.line : 0) * 1.18 || 1;
+            const bars = c.bars.map(b => {
+                const h = b.v == null ? 4 : Math.max(2, (b.v / top) * 100);
+                const cls = b.hit == null ? 'na' : (b.hit ? 'hit' : 'miss');
+                return '<div class="tcol" title="' + escS(b.opp) + '"><div class="tbarwrap"><div class="tval">' + (b.sc ? escS(b.sc) : (b.v == null ? '–' : b.v)) + '</div>' +
+                    '<div class="tbar ' + cls + '" style="height:' + h + '%"></div></div>' +
+                    '<div class="tfoot"><span class="oc">' + escS(initials(b.opp)) + '</span><br>' + escS(b.d) + '<br><b>' + escS(b.ven) + '</b></div></div>';
+            }).join('');
+            const linePct = hasLine ? (c.line / top) * 100 : 0;
+            const mp = c.model_prob != null
+                ? '<div class="tmodel">Model ' + Math.round(c.model_prob) + '% <span>· Exp ' + f1(c.expected) + '</span></div>' : '';
+            const home = c.where === 'H' ? c.team : c.opp, away = c.where === 'H' ? c.opp : c.team;
+            return '<div class="tcard">' +
+                '<div><div class="tname">' + escS(c.team) + '</div><div class="tsub">' + escS(c.market_label) + ' · ' + escS(c.variant_label) +
+                '<b class="' + (c.side === 'Over' || c.side === 'Yes' ? 'over' : 'under') + '">' + (c.market === 'btts' ? 'BTTS ' : '') + c.side + (hasLine ? ' ' + fmtLine(c.line) : '') + '</b></div></div>' +
+                '<div class="tmeta"><div class="thit">LAST 10<b>' + c.hits + '/' + c.n + '</b>' + Math.round(100 * c.hits / c.n) + '%</div>' + mp + '</div>' +
+                '<div class="tchips"><span>' + (c.market === 'goals' || c.market === 'btts' ? 'Avg goals' : 'Average') + '<b>' + f1(c.avg) + '</b></span><span>Median<b>' + f1(c.median) + '</b></span></div>' +
+                '<div class="tchart">' + bars + (hasLine ? '<div class="tline" style="bottom:calc((100% - 74px) * ' + (linePct / 100) + ' + 56px)"><span>' + fmtLine(c.line) + '</span></div>' : '') + '</div>' +
+                '<div class="tnext"><div><div class="k">NEXT · ' + escS(c.league) + '</div>' + escS(home) + ' — ' + escS(away) + '</div><div class="ko">' + escS(c.kickoff) + '</div></div>' +
+                '</div>';
+        }
+
+        function renderTrends() {
+            const grid = document.getElementById('trendsGrid');
+            if (!trendsData) { grid.innerHTML = ''; return; }
+            const q = document.getElementById('tTeam').value.trim().toLowerCase();
+            const real = document.getElementById('tReal').checked;
+            let list = trendsData.cards.filter(c =>
+                (tSel.market === 'all' || c.market === tSel.market) && (tSel.variant === 'all' || c.variant === tSel.variant) &&
+                (tSel.side === 'all' || c.side === tSel.side) && (!q || c.team.toLowerCase().includes(q) || c.opp.toLowerCase().includes(q)) &&
+                (!real || c.model_prob == null || (c.model_prob >= 35 && c.model_prob <= 92)));
+            const sort = document.getElementById('tSort').value;
+            if (sort === 'model') list.sort((a, b) => (b.model_prob || 0) - (a.model_prob || 0));
+            else if (sort === 'time') list.sort((a, b) => a.kickoff.localeCompare(b.kickoff) || b.hits - a.hits);
+            else list.sort((a, b) => b.hits - a.hits || (b.model_prob || 0) - (a.model_prob || 0));
+            grid.innerHTML = list.slice(0, trendsLimit).map(trendCard).join('');
+            document.getElementById('trendsMore').style.display = list.length > trendsLimit ? '' : 'none';
+            document.getElementById('trendsNone').style.display = list.length ? 'none' : (trendsData.cards.length || trendsData.fixtures ? 'block' : 'none');
+            const cov = document.getElementById('trendsCoverage');
+            if (trendsData.fixtures) cov.textContent = list.length + ' trends shown (of ' + trendsData.total_cards + ') for ' + trendsData.fixtures + ' fixtures · stats on '
+                + trendsData.info.have + ' of ' + trendsData.info.needed + ' needed matches' + (trendsData.info.missing ? ' (' + trendsData.info.missing + ' missing)' : '');
+        }
+
+        async function loadTrends(load, quiet) {
+            const iso = document.getElementById('trendsPick').value || isoPlus(0);
+            const minHits = document.getElementById('tMinHits').value;
+            const acts = document.getElementById('trendsActions'), cov = document.getElementById('trendsCoverage');
+            document.getElementById('trendsHeadline').textContent = headline(iso);
+            if (!quiet) document.getElementById('trendsGrid').innerHTML = '<div class="hint" style="padding:14px;">Loading…</div>';
+            acts.innerHTML = ''; document.getElementById('trendsNone').style.display = 'none';
+            try {
+                const r = await fetch('/api/trends?date=' + iso + '&min_hits=' + minHits + (load ? '&load=1' : ''));
+                const d = await r.json();
+                if (!d.ok) { trendsData = null; renderTrends(); cov.textContent = d.message || 'Could not load.'; return; }
+                trendsData = d; trendsLimit = 30;
+                drawChips(); renderTrends();
+                if (!d.fixtures) cov.textContent = d.error || 'No fixtures on this date.';
+                if (d.needs_load) {
+                    acts.innerHTML = '<button type="button" class="btn-dark" id="trendsLoadBtn">Look up fixtures for this day (about one API request per league)</button>';
+                    document.getElementById('trendsLoadBtn').onclick = () => loadTrends(true);
+                }
+                if (d.info.fetchable > 0) {
+                    const n = Math.min(d.info.fetchable, 300);
+                    acts.innerHTML += '<button type="button" class="btn-gold" id="trendsFillBtn">Fetch missing stats (' + n + ' API requests)</button>';
+                    document.getElementById('trendsFillBtn').onclick = async function () {
+                        this.disabled = true; this.textContent = 'Fetching…';
+                        try {
+                            const fr = await fetch('/api/trends/fill', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({date: iso, limit: 300})});
+                            const fd = await fr.json();
+                            await loadTrends(false, true);
+                            if (fd.quota_hit) document.getElementById('trendsCoverage').textContent += ' · API quota used up: try again after 03:00 Nairobi time';
+                        } catch (e) { this.textContent = 'Failed: ' + e; }
+                    };
+                }
+            } catch (e) {
+                trendsData = null; renderTrends(); cov.textContent = 'Could not load trends: ' + e;
+            }
+        }
 
         function setPickedDate(iso) {
             document.getElementById('datePick').value = iso;

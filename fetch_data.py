@@ -450,7 +450,15 @@ def fetch_match_xg_status(event_id):
         return "none", None
     if pd.isna(hxg) or pd.isna(axg):
         return "none", None
-    return "ok", {"home_xg": hxg, "away_xg": axg}
+    out = {"home_xg": hxg, "away_xg": axg}
+    try:                                   # the same response carries shots: keep them for the Shots tab (no extra request)
+        from shots_data import parse_event_stats
+        sh = parse_event_stats(data)
+        if sh:
+            out["home_shots"], out["away_shots"] = sh
+    except Exception:
+        pass
+    return "ok", out
 
 
 def _load_xg_missing():
@@ -554,6 +562,7 @@ def upgrade_xg(budget=400, workers=None, verbose=True):
             stop.set()
         return eid, status, xg
 
+    shots_found = []
     if todo:
         with ThreadPoolExecutor(max_workers=workers or XG_WORKERS) as pool:
             for eid, status, xg in pool.map(work, todo):
@@ -562,6 +571,8 @@ def upgrade_xg(budget=400, workers=None, verbose=True):
                 stats["tried"] += 1
                 if status == "ok":
                     cache[eid] = (xg["home_xg"], xg["away_xg"])
+                    if "home_shots" in xg:
+                        shots_found.append((eid, xg["home_shots"], xg["away_shots"]))
                     missing.pop(eid, None)
                     stats["upgraded"] += 1
                 elif status == "none":
@@ -577,6 +588,12 @@ def upgrade_xg(budget=400, workers=None, verbose=True):
                 print("  [XG UPGRADE] API quota used up (HTTP 429): stopped early, will continue tomorrow.")
         _save_xg_cache(cache)
         _save_xg_missing(missing)
+        if shots_found:
+            try:
+                from shots_data import record_many
+                record_many(shots_found)
+            except Exception as e:
+                print(f"  [XG UPGRADE] could not save shots: {e}")
 
     # keep matches_with_xg.csv consistent with the cache (also fixes rows upgraded in earlier runs)
     ids = df["event_id"].astype(int)

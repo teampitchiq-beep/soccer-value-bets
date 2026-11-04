@@ -75,3 +75,16 @@ DATA_DIR       = "data"
 MATCHES_CSV    = "data/matches.csv"
 MATCHES_XG_CSV = "data/matches_with_xg.csv"
 XG_CACHE_CSV   = "data/xg_cache.csv"
+
+# ============ SHOTS TAB (optional) ============
+# SHOTS_DAILY_BUDGET = 1000   # shots requests per day (0 = off)
+# SHOTS_WINDOW       = 10     # last N home / away matches averaged
+# SHOTS_STAT_KEYS    = []     # extra API field names for total shots, if the default names are not found
+# SHOTS_HALF_LIFE    = 180.0  # expected-shots model: recency half-life in days
+# SHOTS_RIDGE        = 40.0   # expected-shots model: shrinkage toward the league average (shots are ~9x more numerous than goals)
+# SHOTS_AVG_DECAY    = 1.0    # recency weight inside the last-10 Avg: 1.0 = plain average, 0.9 gentle, 0.8 strong (see shots_tests.py)
+# SHOTS_BLEND_WEIGHT = 0.2    # ON by default: shots-based expected goals blended into Over/Under and BTTS. 0 = off (pure goals model)
+
+# ============ TRENDS TAB (optional) ============
+# STATS_DAILY_BUDGET = 600    # match-stats requests per UTC day for the Trends tab (0 = off)
+# STATS_HALF_LIFE    = 180.0  # recency half-life (days) of the per-stat expected-value model
