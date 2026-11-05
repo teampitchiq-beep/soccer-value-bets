@@ -33,7 +33,7 @@ import config as _config
 XG_DAILY_BUDGET = int(getattr(_config, "XG_DAILY_BUDGET", 400))           # real-xG requests per day (0 = off)
 XG_ENRICH_AT_STARTUP = bool(getattr(_config, "XG_ENRICH_AT_STARTUP", False))  # True = fetch ALL xG on a first run
 AUTOMATION_INTERVAL_SECONDS = int(getattr(_config, "AUTOMATION_INTERVAL_SECONDS", 15 * 60))
-STATS_DAILY_BUDGET = int(getattr(_config, "STATS_DAILY_BUDGET", 600))          # Trends stats requests per UTC day (0 = off)
+STATS_DAILY_BUDGET = int(getattr(_config, "STATS_DAILY_BUDGET", 1000))          # Trends stats requests per UTC day (0 = off)
 SHOTS_DAILY_BUDGET = int(getattr(_config, "SHOTS_DAILY_BUDGET", 1000))         # shots requests per UTC day (0 = off)
 
 app = Flask(__name__)
@@ -618,18 +618,28 @@ def _step_shots_upgrade():
 
 
 def _step_stats_upgrade():
-    """Full match stats (shots, corners, fouls, cards ...) for the Trends tab: up to STATS_DAILY_BUDGET requests per UTC day,
-    starting with the last-10 matches of the teams in the upcoming fixtures, then everything else newest first."""
+    """Full match stats (shots, corners, fouls, cards ...) for the Trends tab. At launch it first fetches the last 10 matches of
+    the teams in the upcoming fixtures (so Trends works straight away), then the rest of the history, newest first, up to
+    STATS_DAILY_BUDGET requests per UTC day in total. Every request also fills the xG and shots caches."""
     import match_stats as MS
+    global DF
     if STATS_DAILY_BUDGET <= 0:
         return {"ok": True, "quota": False, "detail": "off (STATS_DAILY_BUDGET = 0)"}
-    allowed = STATS_DAILY_BUDGET - MS.used_today()
-    if allowed <= 0:
-        return {"ok": True, "quota": False, "detail": f"today's budget of {STATS_DAILY_BUDGET} requests is used"}
+    allowed = max(STATS_DAILY_BUDGET - MS.used_today(), 0)
     upcoming = (_MATCHES_CACHE.get("data") or {}).get("matches") or []
     st = MS.upgrade_stats(budget=allowed, upcoming=upcoming, verbose=True)
+    if st["xg_added"]:                               # real xG arrived with the stats: bring matches_with_xg.csv and the model up to date
+        try:
+            import fetch_data as FD
+            from model import load_data
+            FD.upgrade_xg(budget=0, verbose=False)   # budget 0 = no requests, only syncs the csv from the xG cache
+            DF = load_data()
+            invalidate_matches_cache()
+        except Exception as e:
+            print(f"[AUTOMATION] could not sync xG: {e}")
     cov = MS.coverage()
-    detail = (f"{st['ok']} stored, {st['none']} without stats · full stats on {cov['pct']}% of {cov['matches']} matches"
+    detail = (f"{st['ok']} stored ({st['priority']} for today's teams first), {st['none']} without stats, +{st['xg_added']} real xG "
+              f"· full stats on {cov['pct']}% of {cov['matches']} matches"
               + (f", {st['left']} to go" if st["left"] else ", all done")
               + (" · quota used up, continues tomorrow" if st["quota_hit"] else ""))
     all_failed = st["asked"] > 0 and st["errors"] == st["asked"]
@@ -1057,9 +1067,10 @@ def api_trends():
     except (ValueError, TypeError):
         return jsonify({"ok": False, "message": "Bad request."}), 400
     fixtures, needs_load, err = _shots_fixtures(iso, request.args.get("load") == "1")
-    cards, info = MS.build_cards(fixtures, min_hits=min_hits)
+    all_cards, info, top = MS.build_cards(fixtures)
+    cards = MS.cards_for_level(all_cards, min_hits)
     return jsonify({"ok": True, "date": iso, "cards": cards[:1500], "total_cards": len(cards), "fixtures": len(fixtures),
-                    "info": info, "needs_load": needs_load, "error": err, "overall": MS.coverage(),
+                    "top": top, "info": info, "needs_load": needs_load, "error": err, "overall": MS.coverage(),
                     "markets": [{"key": k, "label": v[0]} for k, v in MS.MARKETS.items()] + [{"key": k, "label": v} for k, v in MS.GOAL_MARKETS.items()],
                     "variants": [{"key": k, "label": v} for k, v in MS.VARIANTS.items()]})
 

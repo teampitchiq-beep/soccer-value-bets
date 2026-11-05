@@ -89,11 +89,26 @@ better bet. Of the older accumulator settings in `config.py`, the new builder re
 The same logic is available as JSON at
 `/api/acca?market=ou25&side=Over&legs=auto&min_prob=58&min_odds=1.15&min_combined=2` (`market` is `ou25` or `btts`; `legs` is `auto` for the best of 2 or 3, `2`, or `3`).
 
+## Look and feel
+
+The dashboard uses a navy / green / gold theme inspired by modern football-stats sites: deep navy background, slightly lighter navy cards, a green accent (`#10b880`) for
+hits and active controls, gold for lines and key figures. Colours were sampled from a reference screenshot, not copied from any site's code. Fonts are bundled in
+`static/fonts` (all SIL Open Font License, so they work offline and are free to redistribute): Plus Jakarta Sans for text, Barlow Condensed for headings,
+JetBrains Mono for numbers. No logos or images from other sites are used. The previous red theme is kept as `static/theme.classic.css`: to go back, change
+`theme.css?v=6` to `theme.classic.css` in the `<link>` near the top of `templates/index.html`.
+
 ## Trends tab
 
 - **Data:** one `/events/{id}/stats/` request returns every stat, stored in `data/match_stats.csv` (and the shots also go to the Shots cache).
-  The automation fetches up to `STATS_DAILY_BUDGET` (default 600) matches per UTC day, starting with the last 10 matches of the teams in the upcoming
-  fixtures. **Fetch missing stats** on the tab fills one day's gaps now. Until a team's last 10 matches are stored, it has no cards.
+  **At launch** the automation first fetches the last 10 matches of every team in the upcoming fixtures (always, even beyond the daily budget, up to 800), so the
+  Trends tab works for today's slate straight away. It then backfills the rest of the history, newest first, up to `STATS_DAILY_BUDGET` (default 1000) requests per UTC day
+  in total, and stops at the first quota error. One request per match feeds three things at once: the stats store, the Shots cache and the real-xG cache
+  (the xG upgrade and the shots step also store the stats they already download), so nothing is fetched twice. Loading all ~6,000 matches therefore takes a few days at
+  the default; `python match_stats.py --fill 6000` does it in one resumable go if your quota allows (see API usage: the free cap is unknown and below 7,500). **Fetch missing stats** on the tab fills one day's gaps now. Until a team's last 10 matches are stored, it has no cards.
+- **🔥 Top 10 bets:** the ten most confident trend bets for the chosen day, highest first. Confidence = (20 × model probability + hits) ÷ (20 + 10), i.e. the model counts about
+  twice as much as the last-10 hit rate (your tests showed last-10 alone is noisy). Only lines the model rates 55-80% are considered (higher ones are priced around 1.20 or less,
+  `TOP_MODEL_MIN` / `TOP_MODEL_MAX`), duplicates are merged and at most 2 bets per match are kept. **Fair odds** = 100 ÷ confidence: a bet is only worth it if a bookmaker pays more.
+  There are no bookmaker odds for these markets, so this ranks likelihood, not value. For past days each pick shows WON / LOST.
 - **Lines:** only lines between the 10th and 90th percentile of the stat are offered, so trivial lines never appear. "Realistic lines only" (on by default)
   also hides cards where the model gives the line under 35% or over 92%.
 - **Model probability:** a ridge for/against model per stat (`STATS_HALF_LIFE`, default 180 days) gives the expected value for the fixture;

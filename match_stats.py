@@ -167,15 +167,27 @@ def fetch_one(event_id):
     if r.status_code != 200:
         return "error", None
     try:
-        got = parse_stats(r.json())
+        data = r.json()
+        got = parse_stats(data)
+        xg = parse_xg(data)
     except Exception:
         return "error", None
-    return ("ok", got) if got else ("none", None)
+    return ("ok", (got, xg)) if (got or xg) else ("none", None)
+
+
+def parse_xg(data):
+    """(home_xg, away_xg) if the response carries both, else None. Same field the xG upgrade reads."""
+    stats = (data or {}).get("stats") or {}
+    try:
+        h, a = float((stats.get("home") or {}).get("expected_goals")), float((stats.get("away") or {}).get("expected_goals"))
+    except (TypeError, ValueError):
+        return None
+    return None if (pd.isna(h) or pd.isna(a)) else (h, a)
 
 
 def fetch_stats(event_ids, budget=300, verbose=False):
     """One request per match, quota-safe (stops at the first 429). Returns {"asked","ok","none","errors","quota_hit"}."""
-    out = {"asked": 0, "ok": 0, "none": 0, "errors": 0, "quota_hit": False}
+    out = {"asked": 0, "ok": 0, "none": 0, "errors": 0, "quota_hit": False, "xg_added": 0}
     ids = [int(e) for e in event_ids][:max(int(budget), 0)]
     if not ids:
         return out
@@ -189,18 +201,22 @@ def fetch_stats(event_ids, budget=300, verbose=False):
             stop.set()
         return eid, st, got
 
-    rows, shots, missing = {}, [], _load_missing()
+    rows, shots, xgs, missing = {}, [], {}, _load_missing()
     with ThreadPoolExecutor(max_workers=XG_WORKERS) as pool:
         for eid, st, got in pool.map(work, ids):
             if st == "skipped":
                 continue
             out["asked"] += 1
             if st == "ok":
-                rows[eid] = got
+                row, xg = got
+                if row:
+                    rows[eid] = row
+                    if row.get("shots_h") and row.get("shots_a"):
+                        shots.append((eid, row["shots_h"], row["shots_a"]))
+                if xg:
+                    xgs[eid] = xg
                 missing.pop(eid, None)
                 out["ok"] += 1
-                if got.get("shots_h") and got.get("shots_a"):
-                    shots.append((eid, got["shots_h"], got["shots_a"]))
             elif st == "none":
                 tries, _ = missing.get(eid, (0, ""))
                 missing[eid] = (tries + 1, _today())
@@ -211,6 +227,16 @@ def fetch_stats(event_ids, budget=300, verbose=False):
                 out["errors"] += 1
     save_rows(rows)
     SD.record_many(shots)                                    # keep the Shots cache in step, at no extra cost
+    if xgs:                                                  # ... and the real-xG cache the goals model upgrades from
+        try:
+            import fetch_data as FD
+            cache = FD._load_xg_cache()
+            new = {e: v for e, v in xgs.items() if e not in cache}
+            cache.update(new)
+            FD._save_xg_cache(cache)
+            out["xg_added"] = len(new)
+        except Exception as e:
+            print(f"  [STATS] could not save xG: {e}")
     with _lock:
         _save_missing(missing)
     _add_usage(out["asked"])
@@ -255,43 +281,49 @@ def needed_ids(fixtures):
 
 
 def backlog_ids(upcoming=None):
-    """Priority: the last-10 windows of the teams in the upcoming fixtures, then every other finished match, newest first."""
+    """(priority, rest): priority = the last-10 windows of the teams in the upcoming fixtures (what the Trends tab shows
+    first); rest = every other finished match without stats, newest first."""
     df = SD._matches_table()
     if df.empty:
-        return []
+        return [], []
     store, missing = load_store(), _load_missing()
     now = datetime.now(timezone.utc)
     ages = dict(zip(df["event_id"], df["date"]))
     first = needed_ids([{"date": now.isoformat(), "home_id": m["home_id"], "away_id": m["away_id"]}
                         for m in (upcoming or []) if m.get("home_id") and m.get("away_id")])
-    ids, seen = [], set()
-    for e in list(first) + df.sort_values("date", ascending=False)["event_id"].tolist():
-        if e in seen or e in store.index:
-            continue
-        seen.add(e)
+
+    def due(e):
         tries, last = missing.get(e, (0, ""))
         age = (now - ages[e]).days if e in ages else 999
-        if tries >= GIVE_UP_TRIES and age > GIVE_UP_AGE_DAYS:
-            continue
-        if last == _today():
-            continue
-        ids.append(e)
-    return ids
+        return not (tries >= GIVE_UP_TRIES and age > GIVE_UP_AGE_DAYS) and last != _today()
+
+    prio = [e for e in first if due(e)]
+    pset = set(prio)
+    rest = [e for e in df.sort_values("date", ascending=False)["event_id"].tolist()
+            if e not in pset and e not in store.index and due(e)]
+    return prio, rest
 
 
-def upgrade_stats(budget=600, upcoming=None, chunk=200, verbose=True):
-    """Daily automation entry: fetch up to `budget` matches' stats, most useful first; saves after every chunk."""
-    ids = backlog_ids(upcoming)
-    tot = {"backlog": len(ids), "asked": 0, "ok": 0, "none": 0, "errors": 0, "quota_hit": False}
-    cap = min(len(ids), max(int(budget), 0))
+PRIORITY_CAP = 800            # the teams playing soon are always fetched, even past the daily budget, up to this many
+
+
+def upgrade_stats(budget=1000, upcoming=None, chunk=200, verbose=True):
+    """Daily automation entry. Order: (1) last-10 windows of the teams in the upcoming fixtures (up to PRIORITY_CAP, even
+    beyond `budget`, so the Trends tab works at launch), then (2) every other match, newest first, until `budget` is spent.
+    Saves after every chunk and stops at the first 429. Every request also fills the xG and shots caches."""
+    prio, rest = backlog_ids(upcoming)
+    ids = prio + rest
+    cap = min(len(ids), max(int(budget), min(len(prio), PRIORITY_CAP)))
+    tot = {"backlog": len(ids), "priority": len(prio), "asked": 0, "ok": 0, "none": 0, "errors": 0,
+           "quota_hit": False, "xg_added": 0}
     if verbose:
-        print(f"  [STATS] {len(ids)} matches without full stats | this run: up to {cap} requests")
+        print(f"  [STATS] {len(prio)} priority + {len(rest)} other matches without stats | this run: up to {cap} requests")
     pos = 0
     while pos < len(ids) and tot["asked"] < cap and not tot["quota_hit"]:
         n = min(chunk, cap - tot["asked"])
         part = fetch_stats(ids[pos:pos + n], budget=n)
         pos += n
-        for k in ("asked", "ok", "none", "errors"):
+        for k in ("asked", "ok", "none", "errors", "xg_added"):
             tot[k] += part[k]
         tot["quota_hit"] = part["quota_hit"]
         if verbose:
@@ -349,16 +381,18 @@ def line_grid(store, key, variant):
     return [x + 0.5 for x in range(int(np.floor(lo)) - 1, int(np.ceil(hi)) + 1) if x + 0.5 > 0 and lo - 0.5 <= x + 0.5 <= hi + 0.5]
 
 
-def best_lines(vals, grid, min_hits):
-    """{'Over': (line, hits), 'Under': (line, hits)}: the most demanding line still hit >= min_hits times."""
+LEVELS = (10, 9, 8)           # hit thresholds a card can be built for (the Top 10 uses all of them)
+
+
+def best_lines(vals, grid, level):
+    """{'Over': (line, hits), 'Under': (line, hits)}: the most demanding line still hit >= `level` times."""
     res = {}
-    n = len(vals)
     for L in grid:
         over = sum(v > L for v in vals)
         under = sum(v < L for v in vals)
-        if over >= min_hits and ("Over" not in res or L > res["Over"][0]):
+        if over >= level and ("Over" not in res or L > res["Over"][0]):
             res["Over"] = (L, over)
-        if under >= min_hits and ("Under" not in res or L < res["Under"][0]):
+        if under >= level and ("Under" not in res or L < res["Under"][0]):
             res["Under"] = (L, under)
     return res
 
@@ -435,14 +469,14 @@ def _goal_df():
     return _GDF["df"]
 
 
-def goal_cards(f, side_name, name, opp_name, where, ms, hist, min_hits, probs):
+def goal_cards(f, side_name, name, opp_name, where, ms, hist, probs):
     """Over/Under 2.5 goals and BTTS Yes/No cards for one team from its last 10 matches (all venues)."""
     cards = []
     totals = [m["hg"] + m["ag"] for m in ms]
     both = [m["hg"] > 0 and m["ag"] > 0 for m in ms]
     base = {"event_id": f["event_id"], "team": name, "opp": opp_name, "where": where,
             "kickoff": SD.eat_time_of(f["date"]), "league": SD.league_name(f["league_id"]), "n": len(ms),
-            "variant": "total", "variant_label": "Match", "avg": round(float(np.mean(totals)), 1),
+            "variant": "total", "variant_label": "Match", "fixed": True, "avg": round(float(np.mean(totals)), 1),
             "median": round(float(np.median(totals)), 1), "expected": probs["exp_goals"]}
 
     def bars(hit_fn):
@@ -451,15 +485,15 @@ def goal_cards(f, side_name, name, opp_name, where, ms, hist, min_hits, probs):
 
     over, under = sum(t > GOAL_LINE for t in totals), sum(t < GOAL_LINE for t in totals)
     for sd, hits, pr in (("Over", over, probs["over"]), ("Under", under, probs["under"])):
-        if hits >= min_hits:
-            cards.append({**base, "market": "goals", "market_label": "Goals", "side": sd, "line": GOAL_LINE, "hits": hits,
+        if hits >= min(LEVELS):
+            cards.append({**base, "market": "goals", "market_label": "Goals", "side": sd, "line": GOAL_LINE, "hits": hits, "level": hits,
                           "model_prob": round(pr * 100, 1),
                           "bars": bars(lambda m, t, sd=sd: t > GOAL_LINE if sd == "Over" else t < GOAL_LINE)})
     yes = sum(both)
     for sd, hits, pr in (("Yes", yes, probs["btts_yes"]), ("No", len(ms) - yes, probs["btts_no"])):
-        if hits >= min_hits:
+        if hits >= min(LEVELS):
             cards.append({**base, "market": "btts", "market_label": "Both teams to score", "side": sd, "line": None,
-                          "hits": hits, "model_prob": round(pr * 100, 1),
+                          "hits": hits, "level": hits, "model_prob": round(pr * 100, 1),
                           "bars": bars(lambda m, t, sd=sd: (m["hg"] > 0 and m["ag"] > 0) == (sd == "Yes"))})
     return cards
 
@@ -477,13 +511,77 @@ def fixture_goal_probs(hist, f):
 
 
 # ---------------------------------------------------------------- build the cards for one day
-def build_cards(fixtures, min_hits=10):
-    """Trend cards for every team in `fixtures`. Returns (cards, info)."""
+CONF_PRIOR = 20          # the model counts like this many matches next to the 10-match hit rate (tests: last-10 alone is noisy)
+# Lines the model rates above ~80% are priced around 1.20 or less by bookmakers (no value, and often not offered at all), so the
+# Top 10 only considers lines in this band; the trend cards themselves still show everything the filters allow.
+TOP_MODEL_RANGE = (float(getattr(config, "TOP_MODEL_MIN", 55.0)), float(getattr(config, "TOP_MODEL_MAX", 80.0)))
+TOP_PER_FIXTURE = 2
+
+
+def confidence(card):
+    """Model probability and last-10 hit rate combined (model weighs ~2x): (20 * model + hits) / (20 + n)."""
+    p = card["model_prob"] / 100.0
+    return round(100.0 * (CONF_PRIOR * p + card["hits"]) / (CONF_PRIOR + card["n"]), 1)
+
+
+def evaluate_card(card, df, store):
+    """'won' / 'lost' / None for a card whose fixture has been played (None while unplayed or if the stat is missing)."""
+    try:
+        m = df[df["event_id"] == card["event_id"]]
+        if m.empty:
+            return None
+        m = m.iloc[0]
+        hg, ag = int(m["home_goals"]), int(m["away_goals"])
+        if card["market"] == "goals":
+            won = (hg + ag > GOAL_LINE) == (card["side"] == "Over")
+        elif card["market"] == "btts":
+            won = ((hg > 0 and ag > 0) == (card["side"] == "Yes"))
+        else:
+            if card["event_id"] not in store.index:
+                return None
+            v = _value(store.loc[card["event_id"]].to_dict(), card["market"], "h" if card["where"] == "H" else "a", card["variant"])
+            if v is None or pd.isna(v):
+                return None
+            won = (v > card["line"]) if card["side"] == "Over" else (v < card["line"])
+        return "won" if won else "lost"
+    except Exception:
+        return None
+
+
+def top_bets(cards, df, store, finished_ids, n=10):
+    """The n most confident trend bets, highest first. Candidates: cards (any hit level) with a model probability in
+    TOP_MODEL_RANGE and >= 8 of 10 hits. Duplicates (both teams of a fixture giving the same match-total bet) are merged,
+    and at most TOP_PER_FIXTURE bets per fixture are kept so the list is not one match repeated."""
+    lo, hi = TOP_MODEL_RANGE
+    best = {}
+    for c in cards:
+        if c.get("model_prob") is None or not (lo <= c["model_prob"] <= hi) or c["hits"] < min(LEVELS):
+            continue
+        c = dict(c, confidence=confidence(c))
+        owner = None if c["variant"] == "total" else c["team"]
+        key = (c["event_id"], owner, c["market"], c["variant"], c["side"])
+        if key not in best or c["confidence"] > best[key]["confidence"]:
+            best[key] = c
+    picked, per_fixture = [], {}
+    for c in sorted(best.values(), key=lambda c: (-c["confidence"], -c["hits"], -c["model_prob"])):
+        if per_fixture.get(c["event_id"], 0) >= TOP_PER_FIXTURE:
+            continue
+        per_fixture[c["event_id"]] = per_fixture.get(c["event_id"], 0) + 1
+        c["fair_odds"] = round(100.0 / c["confidence"], 2)
+        c["result"] = evaluate_card(c, df, store) if c["event_id"] in finished_ids else None
+        picked.append(c)
+        if len(picked) >= n:
+            break
+    return picked
+
+
+def build_cards(fixtures):
+    """Trend cards for every team in `fixtures` at every hit level (10, 9, 8), plus the Top 10. Returns (cards, info, top)."""
     from model import lambdas_from_fit
     df, store = SD._matches_table(), load_store()
     info = {"needed": 0, "have": 0, "missing": 0, "fetchable": 0}
     if df.empty or not fixtures:
-        return [], info
+        return [], info, []
     kos = []
     for f in fixtures:
         try:
@@ -517,39 +615,49 @@ def build_cards(fixtures, min_hits=10):
             if len(ms) < WINDOW:
                 continue
             if goal_probs is not None:
-                cards.extend(goal_cards(f, side_name, name, opp_name, where, ms, hist, min_hits, goal_probs))
+                cards.extend(goal_cards(f, side_name, name, opp_name, where, ms, hist, goal_probs))
             for key, (label, _field) in MARKETS.items():
                 for variant in VARIANTS:
                     series = [(m, _value(m["row"], key, m["who"], variant)) for m in ms]
                     vals = [v for _, v in series if v is not None and not pd.isna(v)]
-                    if len(vals) < max(min_hits, 8):
+                    if len(vals) < min(LEVELS):
                         continue
-                    found = best_lines(vals, grids[(key, variant)], min_hits)
-                    for sd, (line, hits) in found.items():
-                        mu = k = None
-                        if exp[key] is not None:
-                            mh, ma = exp[key]
-                            mu = {"for": mh if side_name == "h" else ma, "against": ma if side_name == "h" else mh,
-                                  "total": mh + ma}[variant]
-                            k = models[key]["k_total" if variant == "total" else "k_for"]
-                        cards.append({
-                            "event_id": f["event_id"], "team": name, "opp": opp_name, "where": where,
-                            "kickoff": SD.eat_time_of(f["date"]), "league": SD.league_name(f["league_id"]),
-                            "market": key, "market_label": label, "variant": variant,
-                            "variant_label": VARIANTS[variant], "side": sd, "line": line, "hits": hits, "n": len(vals),
-                            "avg": round(float(np.mean(vals)), 1), "median": round(float(np.median(vals)), 1),
-                            "expected": round(float(mu), 1) if mu is not None else None,
-                            "model_prob": round(p_line(mu, k, line, sd) * 100, 1) if mu is not None else None,
-                            "bars": [{"d": m["date"].strftime("%d/%m"), "v": (None if v is None or pd.isna(v) else float(v)),
-                                      "ven": m["venue"], "opp": m["opp"],
-                                      "hit": (None if v is None or pd.isna(v) else
-                                              bool(v > line if sd == "Over" else v < line))} for m, v in series],
-                        })
-    cards.sort(key=lambda c: (-c["hits"], -(c["model_prob"] or 0)))
+                    for level in LEVELS:
+                        if len(vals) < level:
+                            continue
+                        for sd, (line, hits) in best_lines(vals, grids[(key, variant)], level).items():
+                            mu = k = None
+                            if exp[key] is not None:
+                                mh, ma = exp[key]
+                                mu = {"for": mh if side_name == "h" else ma, "against": ma if side_name == "h" else mh,
+                                      "total": mh + ma}[variant]
+                                k = models[key]["k_total" if variant == "total" else "k_for"]
+                            cards.append({
+                                "event_id": f["event_id"], "team": name, "opp": opp_name, "where": where,
+                                "kickoff": SD.eat_time_of(f["date"]), "league": SD.league_name(f["league_id"]),
+                                "market": key, "market_label": label, "variant": variant, "fixed": False, "level": level,
+                                "variant_label": VARIANTS[variant], "side": sd, "line": line, "hits": hits, "n": len(vals),
+                                "avg": round(float(np.mean(vals)), 1), "median": round(float(np.median(vals)), 1),
+                                "expected": round(float(mu), 1) if mu is not None else None,
+                                "model_prob": round(p_line(mu, k, line, sd) * 100, 1) if mu is not None else None,
+                                "bars": [{"d": m["date"].strftime("%d/%m"), "v": (None if v is None or pd.isna(v) else float(v)),
+                                          "ven": m["venue"], "opp": m["opp"],
+                                          "hit": (None if v is None or pd.isna(v) else
+                                                  bool(v > line if sd == "Over" else v < line))} for m, v in series],
+                            })
     have = sum(1 for e in need if e in store.index)
     missing = needed_ids(fixtures)
     info.update(needed=len(need), have=have, missing=len(need) - have, fetchable=len(missing))
-    return cards, info
+    finished = {f["event_id"] for f in fixtures if f.get("status") == "finished"}
+    top = top_bets(cards, df, store, finished)
+    return cards, info, top
+
+
+def cards_for_level(cards, level):
+    """The cards shown for a selected hit level: stat cards built for exactly that level, goals/BTTS cards with >= level hits."""
+    out = [c for c in cards if (c["hits"] >= level) if c.get("fixed")] + [c for c in cards if not c.get("fixed") and c["level"] == level]
+    out.sort(key=lambda c: (-c["hits"], -(c["model_prob"] or 0)))
+    return out
 
 
 if __name__ == "__main__":
@@ -557,7 +665,7 @@ if __name__ == "__main__":
     if "--fill" in a:
         i = a.index("--fill")
         n = int(a[i + 1]) if len(a) > i + 1 and a[i + 1].isdigit() else 300
-        print(upgrade_stats(budget=n))
+        print(upgrade_stats(budget=n, chunk=200))
     else:
         c = coverage()
         print(f"full stats on {c['have']} of {c['matches']} finished matches ({c['pct']}%)")

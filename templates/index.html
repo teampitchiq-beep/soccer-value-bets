@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-    <meta name="theme-color" content="#0a0a0b">
+    <meta name="theme-color" content="#0f172a">
     <title>PitchIQ Predictions</title>
-    <link rel="stylesheet" href="/static/theme.css?v=5">
+    <link rel="stylesheet" href="/static/theme.css?v=6">
     <style>
         [hidden] { display: none !important; }
         /* Searchable picker used on Single Match. It replaces the native <select> popups: a team is only
@@ -21,7 +21,7 @@
                        background: #0d0d0f; border: 1px solid var(--line); border-radius: 10px;
                        box-shadow: 0 12px 32px rgba(0,0,0,.65); -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
         .picker-list li { padding: 10px 12px; min-height: 44px; display: flex; align-items: center; border-radius: 8px; cursor: pointer; }
-        .picker-list li.hl, .picker-list li:hover { background: #1c1c20; }
+        .picker-list li.hl, .picker-list li:hover { background: var(--card-2); }
         .picker-list li.sel { color: var(--gold); font-weight: 700; }
         .picker-list li.none { color: var(--muted); cursor: default; }
 
@@ -54,7 +54,7 @@
         .rr-t.lo { color: var(--muted); } .rr-t.lo b { font-weight: 600; }
         .rr-picks { grid-area: picks; display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
         .rrow .mstat { grid-area: chev; }
-        .rrow.open .mstat { transform: rotate(180deg); background: var(--red); color: #fff; border-color: var(--red); }
+        .rrow.open .mstat { transform: rotate(180deg); background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
         .rr-detail { grid-area: detail; display: none; margin-top: 8px; padding: 10px 12px; background: var(--bg-2); border-radius: 10px;
                      border: 1px solid var(--line); font-size: .84rem; gap: 10px 20px; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
         .rrow.open .rr-detail { display: grid; }
@@ -81,7 +81,7 @@
         .acca-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-top: 14px; }
         .acca-grid label { display: block; font-size: .78rem; color: var(--muted); margin-bottom: 4px; }
         .acca-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: .88rem; }
-        .acca-check input { width: 20px; height: 20px; min-height: 0; margin-top: 2px; flex: none; accent-color: var(--red); }
+        .acca-check input { width: 20px; height: 20px; min-height: 0; margin-top: 2px; flex: none; accent-color: var(--accent); }
         .acca-leg { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin-bottom: 10px; background: var(--card); }
         .acca-leg .top { display: flex; justify-content: space-between; gap: 8px; font-size: .78rem; color: var(--muted); }
         .acca-leg .teams { font-size: 1.02rem; font-weight: 700; color: var(--link); margin: 4px 0 8px; }
@@ -96,7 +96,7 @@
         .acca-none { margin-top: 16px; padding: 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--card); }
         .acca-none b { display: block; margin-bottom: 6px; }
         /* Shots tab */
-        .shr { grid-template-columns: 46px minmax(0, 1fr) 78px 52px 30px !important; }
+        .shr { grid-template-columns: 40px minmax(0, 1fr) 64px 44px 28px !important; column-gap: 6px !important; }
         .shr .hcell, .shr .hide-sm { display: none; }
         .shr .num { text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; font-size: .9rem; }
         .shr .avg { font-weight: 800; font-size: 1rem; color: var(--gold); }
@@ -110,7 +110,10 @@
         }
         .shr .xs { display: block; font-weight: 500; font-size: .68rem; color: var(--muted); line-height: 1.2; }
         .shr .xs-i { font-weight: 500; font-size: .7rem; color: var(--muted); margin-left: 3px; }
-        .shr.shr2 { grid-template-columns: 42px minmax(0, 1fr) 74px 46px 46px 28px !important; }
+        .shr.shr2 { grid-template-columns: 38px minmax(0, 1fr) 62px 38px 40px 26px !important; column-gap: 6px !important; }
+        .shr.shr2 .num { font-size: .8rem; }
+        .shr.shr2 .num.avg { font-size: .88rem; }
+        .shr.shr2 .mteams { font-size: .86rem; }
         .shr .tot { color: var(--text, #fff); }
         @media (min-width: 640px) {
             .shr.shr2 { grid-template-columns: 54px minmax(0, 1fr) 74px 74px 62px 72px 34px !important; }
@@ -119,7 +122,7 @@
         .tfilters { display: flex; flex-direction: column; gap: 8px; margin: 10px 0 14px; }
         .tfilters .seg { margin: 0; }
         .trow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-        .trow select, .trow input[type=text] { background: #1a1a1a; color: #fff; border: 1px solid #333; border-radius: 8px; padding: 8px 10px; font: inherit; min-width: 0; }
+        .trow select, .trow input[type=text] { min-width: 0; }
         .trow input[type=text] { flex: 1 1 140px; }
         .trow label { color: var(--muted); font-size: .8rem; display: flex; gap: 6px; align-items: center; }
         .tgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(310px, 1fr)); gap: 14px; }
@@ -135,21 +138,39 @@
         .tmodel { font-size: .8rem; color: var(--gold); font-weight: 700; }
         .tmodel span { color: var(--muted); font-weight: 400; }
         .tchips { display: flex; gap: 8px; flex-wrap: wrap; }
-        .tchips span { background: #1a1a1d; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: .8rem; color: var(--muted); }
+        .tchips span { background: #1b2940; border: 1px solid var(--line); border-radius: 8px; padding: 4px 10px; font-size: .8rem; color: var(--muted); }
         .tchips span b { color: var(--text); margin-left: 4px; }
         .tchart { position: relative; height: 180px; display: flex; gap: 4px; align-items: flex-end; padding: 18px 0 0 0; }
         .tcol { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; min-width: 0; }
         .tbarwrap { flex: 1; width: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; }
         .tval { font-size: .72rem; font-weight: 700; margin-bottom: 2px; }
         .tbar { width: 78%; border-radius: 4px 4px 0 0; min-height: 3px; }
-        .tbar.hit { background: var(--win); } .tbar.miss { background: var(--lose); opacity: .85; } .tbar.na { background: #444; }
+        .tbar.hit { background: var(--win); } .tbar.miss { background: var(--lose); opacity: .85; } .tbar.na { background: #3a4a66; }
         .tfoot { height: 56px; flex: none; font-size: .6rem; color: var(--muted); text-align: center; line-height: 1.25; margin-top: 3px; white-space: nowrap; }
-        .tfoot .oc { display: inline-block; background: #1f1f23; border: 1px solid var(--line); border-radius: 50%; width: 26px; height: 26px; line-height: 24px; font-size: .55rem; font-weight: 800; color: var(--text); }
+        .tfoot .oc { display: inline-block; background: #18253d; border: 1px solid var(--line); border-radius: 50%; width: 26px; height: 26px; line-height: 24px; font-size: .55rem; font-weight: 800; color: var(--text); }
         .tline { position: absolute; left: 0; right: 0; border-top: 2px dashed var(--gold); pointer-events: none; }
-        .tline span { position: absolute; left: 0; top: -11px; background: var(--gold); color: #111; font-size: .68rem; font-weight: 800; border-radius: 6px; padding: 0 5px; }
-        .tnext { display: flex; justify-content: space-between; gap: 8px; align-items: center; background: #0c0c0e; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: .84rem; }
+        .tline span { position: absolute; left: 0; top: -11px; background: var(--gold); color: #1a1405; font-size: .68rem; font-weight: 800; border-radius: 6px; padding: 0 5px; }
+        .tnext { display: flex; justify-content: space-between; gap: 8px; align-items: center; background: var(--bg-3); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: .84rem; }
         .tnext .k { color: var(--muted); font-size: .68rem; letter-spacing: .05em; }
         .tnext .ko { color: var(--gold); font-weight: 800; }
+        /* Top 10 bets */
+        .trank { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; background: var(--card); border: 1px solid var(--line);
+                 border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
+        .trank .tp-rk { font-weight: 900; font-size: 1.15rem; color: var(--gold); text-align: center; }
+        .trank:nth-child(1) .tp-rk { font-size: 1.4rem; }
+        .trank .tp-rt { font-weight: 800; font-size: .98rem; }
+        .trank .tp-rt .sd { margin-left: 6px; }
+        .trank .tp-rt .sd.over { color: var(--over); } .trank .tp-rt .sd.under { color: var(--under); }
+        .trank .tp-rs { color: var(--muted); font-size: .76rem; margin-top: 1px; }
+        .trank .tp-rm { color: var(--muted); font-size: .74rem; margin-top: 2px; }
+        .trank .tp-rm b { color: var(--gold); }
+        .trank .tp-rc { text-align: right; }
+        .trank .tp-cf { font-weight: 900; font-size: 1.25rem; color: var(--win); line-height: 1; }
+        .trank .tp-cfl { color: var(--muted); font-size: .62rem; letter-spacing: .05em; }
+        .trank .tp-res { font-size: .72rem; font-weight: 800; margin-top: 3px; }
+        .trank .tp-res.won { color: var(--win); } .trank .tp-res.lost { color: var(--lose); }
+        .trank .tp-card { display: none; grid-column: 1 / -1; margin-top: 6px; }
+        .trank.open .tp-card { display: block; }
         .shots-ctl { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; align-items: center; margin: 10px 0 4px; }
         .shots-ctl .btn-dark, .shots-ctl button { cursor: pointer; }
     </style>
@@ -412,13 +433,23 @@
             <div class="seg" style="align-items:center;">
                 <button type="button" onclick="shiftTrendsDate(-1)">‹ Prev</button>
                 <input type="date" id="trendsPick" onchange="loadTrends(false)"
-                       style="background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 10px;font:inherit;">
+                       class="dinput">
                 <button type="button" onclick="shiftTrendsDate(1)">Next ›</button>
                 <button type="button" onclick="setTrendsDate(isoPlus(0))">Today</button>
             </div>
             <div class="date-headline" id="trendsHeadline"></div>
             <div class="hint" id="trendsCoverage" style="text-align:center;"></div>
             <div class="shots-ctl" id="trendsActions"></div>
+            <div id="trendsTopWrap" style="display:none;">
+                <div class="sec-bar">🔥 Top 10 bets · highest confidence first</div>
+                <div class="hint" style="margin:6px 2px 10px;">
+                    <b>Confidence</b> blends the model's probability for the line with the team's last-10 hit rate (the model counts about twice as much).
+                    <b>Fair odds</b> = 1 ÷ confidence: only worth a bet if a bookmaker pays more than that. Lines the model rates 55–80% only, at most 2 per match.
+                    No bookmaker odds are used, so this ranks how likely a line is, not whether it is good value. Tap a row for the full card.
+                </div>
+                <div id="trendsTop"></div>
+            </div>
+            <div class="sec-bar" style="margin-top:14px;">All trends</div>
             <div class="tfilters">
                 <div class="seg" id="tMarkets"></div>
                 <div class="seg" id="tVariants"></div>
@@ -452,7 +483,7 @@
             <div class="seg" style="align-items:center;">
                 <button type="button" onclick="shiftShotsDate(-1)">‹ Prev</button>
                 <input type="date" id="shotsPick" onchange="loadShots(false)"
-                       style="background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 10px;font:inherit;">
+                       class="dinput">
                 <button type="button" onclick="shiftShotsDate(1)">Next ›</button>
                 <button type="button" onclick="setShotsDate(isoPlus(0))">Today</button>
             </div>
@@ -654,7 +685,7 @@
             <div class="seg" style="align-items:center;">
                 <button type="button" onclick="shiftPickedDate(-1)">‹ Prev</button>
                 <input type="date" id="datePick" onchange="renderPickedDate()"
-                       style="background:#1a1a1a;color:#fff;border:1px solid #333;border-radius:8px;padding:8px 10px;font:inherit;">
+                       class="dinput">
                 <button type="button" onclick="shiftPickedDate(1)">Next ›</button>
                 <button type="button" onclick="setPickedDate(isoPlus(0))">Today</button>
             </div>
@@ -1288,7 +1319,7 @@
             }).join('');
             const linePct = hasLine ? (c.line / top) * 100 : 0;
             const mp = c.model_prob != null
-                ? '<div class="tmodel">Model ' + Math.round(c.model_prob) + '% <span>· Exp ' + f1(c.expected) + '</span></div>' : '';
+                ? '<div class="tmodel">Model <b>' + Math.round(c.model_prob) + '%</b> <span>· Exp ' + f1(c.expected) + '</span></div>' : '';
             const home = c.where === 'H' ? c.team : c.opp, away = c.where === 'H' ? c.opp : c.team;
             return '<div class="tcard">' +
                 '<div><div class="tname">' + escS(c.team) + '</div><div class="tsub">' + escS(c.market_label) + ' · ' + escS(c.variant_label) +
@@ -1298,6 +1329,26 @@
                 '<div class="tchart">' + bars + (hasLine ? '<div class="tline" style="bottom:calc((100% - 74px) * ' + (linePct / 100) + ' + 56px)"><span>' + fmtLine(c.line) + '</span></div>' : '') + '</div>' +
                 '<div class="tnext"><div><div class="k">NEXT · ' + escS(c.league) + '</div>' + escS(home) + ' — ' + escS(away) + '</div><div class="ko">' + escS(c.kickoff) + '</div></div>' +
                 '</div>';
+        }
+
+        function topRow(c, i) {
+            const sd = (c.market === 'btts' ? 'BTTS ' : '') + c.side + (c.line != null ? ' ' + fmtLine(c.line) : '');
+            const home = c.where === 'H' ? c.team : c.opp, away = c.where === 'H' ? c.opp : c.team;
+            const res = c.result === 'won' ? '<div class="tp-res won">✅ WON</div>' : (c.result === 'lost' ? '<div class="tp-res lost">❌ LOST</div>' : '');
+            const subject = (c.variant === 'total' || c.fixed) ? home + ' v ' + away : c.team;
+            return '<div class="trank" onclick="this.classList.toggle(\'open\')">' +
+                '<div class="tp-rk">' + (i + 1) + '</div>' +
+                '<div><div class="tp-rt">' + escS(subject) + '<span class="sd ' + (c.side === 'Over' || c.side === 'Yes' ? 'over' : 'under') + '">' + escS(sd) + '</span></div>' +
+                '<div class="tp-rs">' + escS(c.market_label) + ' · ' + escS(c.variant_label) + ' · ' + escS(home) + ' v ' + escS(away) + ' · ' + escS(c.kickoff) + '</div>' +
+                '<div class="tp-rm">Model ' + Math.round(c.model_prob) + '% · Last 10 <b>' + c.hits + '/' + c.n + '</b> · Fair odds <b>' + Number(c.fair_odds).toFixed(2) + '</b></div></div>' +
+                '<div class="tp-rc"><div class="tp-cf">' + Math.round(c.confidence) + '%</div><div class="tp-cfl">CONFIDENCE</div>' + res + '</div>' +
+                '<div class="tp-card">' + trendCard(c) + '</div></div>';
+        }
+
+        function renderTop(top) {
+            const wrap = document.getElementById('trendsTopWrap');
+            wrap.style.display = top && top.length ? '' : 'none';
+            document.getElementById('trendsTop').innerHTML = (top || []).map(topRow).join('');
         }
 
         function renderTrends() {
@@ -1331,9 +1382,9 @@
             try {
                 const r = await fetch('/api/trends?date=' + iso + '&min_hits=' + minHits + (load ? '&load=1' : ''));
                 const d = await r.json();
-                if (!d.ok) { trendsData = null; renderTrends(); cov.textContent = d.message || 'Could not load.'; return; }
+                if (!d.ok) { trendsData = null; renderTrends(); renderTop([]); cov.textContent = d.message || 'Could not load.'; return; }
                 trendsData = d; trendsLimit = 30;
-                drawChips(); renderTrends();
+                drawChips(); renderTrends(); renderTop(d.top);
                 if (!d.fixtures) cov.textContent = d.error || 'No fixtures on this date.';
                 if (d.needs_load) {
                     acts.innerHTML = '<button type="button" class="btn-dark" id="trendsLoadBtn">Look up fixtures for this day (about one API request per league)</button>';
@@ -1353,7 +1404,7 @@
                     };
                 }
             } catch (e) {
-                trendsData = null; renderTrends(); cov.textContent = 'Could not load trends: ' + e;
+                trendsData = null; renderTrends(); renderTop([]); cov.textContent = 'Could not load trends: ' + e;
             }
         }
 

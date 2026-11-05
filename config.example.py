@@ -86,5 +86,6 @@ XG_CACHE_CSV   = "data/xg_cache.csv"
 # SHOTS_BLEND_WEIGHT = 0.2    # ON by default: shots-based expected goals blended into Over/Under and BTTS. 0 = off (pure goals model)
 
 # ============ TRENDS TAB (optional) ============
-# STATS_DAILY_BUDGET = 600    # match-stats requests per UTC day for the Trends tab (0 = off)
+# STATS_DAILY_BUDGET = 1000   # match-stats requests per UTC day for the Trends tab (0 = off)
 # STATS_HALF_LIFE    = 180.0  # recency half-life (days) of the per-stat expected-value model
+# TOP_MODEL_MIN = 55.0; TOP_MODEL_MAX = 80.0   # Top 10 bets only considers lines the model rates within this % band

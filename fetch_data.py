@@ -458,6 +458,13 @@ def fetch_match_xg_status(event_id):
             out["home_shots"], out["away_shots"] = sh
     except Exception:
         pass
+    try:                                   # ... and every other stat for the Trends tab
+        from match_stats import parse_stats
+        row = parse_stats(data)
+        if row:
+            out["stats_row"] = row
+    except Exception:
+        pass
     return "ok", out
 
 
@@ -562,7 +569,7 @@ def upgrade_xg(budget=400, workers=None, verbose=True):
             stop.set()
         return eid, status, xg
 
-    shots_found = []
+    shots_found, stats_rows = [], {}
     if todo:
         with ThreadPoolExecutor(max_workers=workers or XG_WORKERS) as pool:
             for eid, status, xg in pool.map(work, todo):
@@ -573,6 +580,8 @@ def upgrade_xg(budget=400, workers=None, verbose=True):
                     cache[eid] = (xg["home_xg"], xg["away_xg"])
                     if "home_shots" in xg:
                         shots_found.append((eid, xg["home_shots"], xg["away_shots"]))
+                    if "stats_row" in xg:
+                        stats_rows[eid] = xg["stats_row"]
                     missing.pop(eid, None)
                     stats["upgraded"] += 1
                 elif status == "none":
@@ -594,6 +603,12 @@ def upgrade_xg(budget=400, workers=None, verbose=True):
                 record_many(shots_found)
             except Exception as e:
                 print(f"  [XG UPGRADE] could not save shots: {e}")
+        if stats_rows:
+            try:
+                from match_stats import save_rows
+                save_rows(stats_rows)
+            except Exception as e:
+                print(f"  [XG UPGRADE] could not save match stats: {e}")
 
     # keep matches_with_xg.csv consistent with the cache (also fixes rows upgraded in earlier runs)
     ids = df["event_id"].astype(int)
