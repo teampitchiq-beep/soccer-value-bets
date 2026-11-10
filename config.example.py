@@ -89,3 +89,15 @@ XG_CACHE_CSV   = "data/xg_cache.csv"
 # STATS_DAILY_BUDGET = 1000   # match-stats requests per UTC day for the Trends tab (0 = off)
 # STATS_HALF_LIFE    = 180.0  # recency half-life (days) of the per-stat expected-value model
 # TOP_MODEL_MIN = 55.0; TOP_MODEL_MAX = 80.0   # Top 10 bets only considers lines the model rates within this % band
+
+# ============ 1X2 (MATCH RESULT) (optional) ============
+# DRAW_BOOST             = 0.05   # multiplies the probability of drawn scorelines (0 = plain Poisson)
+# X12_HIGH_PROB          = 0.60   # confidence tiers on the most likely outcome
+# X12_MEDIUM_PROB        = 0.50
+# ACCA_MIN_LEG_PROB_1X2  = 0.45   # minimum model probability per leg for the 1X2 acca market
+
+# ============ NATIONAL TEAMS (UEFA Nations League, World Cup qualifiers ...) ============
+# National teams play only a handful of matches a year, so scan.py asks them for NATIONAL_MIN_APPS appearances instead of 10
+# (otherwise their fixtures would be skipped). `python add_leagues.py --preset c` adds the UEFA Nations League and fills this list in.
+NATIONAL_TEAM_LEAGUES = []
+# NATIONAL_MIN_APPS = 4

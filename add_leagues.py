@@ -13,6 +13,9 @@ Add by NAME (the script looks the IDs up for you, one API request):
     python add_leagues.py --preset a              # batch A: Championship, Serie B, MLS, Liga MX, 2. Bundesliga
     python add_leagues.py --preset b              # batch B: Belgian Pro League, Brasileirão Série B, Argentina,
                                                   #          Saudi Pro League, Danish Superliga
+    python add_leagues.py --preset c              # UEFA Nations League (national teams; ~300 matches)
+    python add_leagues.py --preset d              # optional rating helpers for national teams: World Cup qualifiers (UEFA)
+                                                  #          and World Cup 2026 (same teams as the Nations League)
     python add_leagues.py --name "Serie B|Italy"  # any single league: "name|country"
     python add_leagues.py --preset a --dry-run    # only show which IDs it found, change nothing
 
@@ -51,6 +54,11 @@ PRESETS = {
           ("MLS", "USA", "MLS"),
           ("Liga MX", "Mexico", "Liga MX"),
           ("2. Bundesliga", "Germany", "2. Bundesliga")],
+    # National teams. Bzzoiro tags the UEFA Nations League "Full" (xG, shot maps, stats on 100% of played matches).
+    # Preset d adds other competitions with the SAME national teams: they play rarely, so extra matches sharpen the ratings.
+    "c": [("Nations League", "Europe", "UEFA Nations League")],
+    "d": [("World Cup Qualification UEFA", "Europe", "World Cup Qualifiers (UEFA)"),
+          ("World Cup 2026", "International", "World Cup 2026")],
     "b": [("Pro League", "Belgium", "Belgian Pro League"),
           ("Serie B", "Brazil", "Brasileirão Série B"),
           ("Liga Profesional", "Argentina", "Liga Profesional"),
@@ -58,12 +66,16 @@ PRESETS = {
           ("Superliga", "Denmark", "Danish Superliga")],
 }
 BAD_WORDS = ("women", "femenin", "feminin", " w ", "u21", "u20", "u19", "u18", "youth", "reserve", "cup", "copa", "pokal")
+# pan-regional / international competitions are listed under one of these "countries" in the API
+REGION_COUNTRIES = ("europe", "world", "international", "uefa", "")
+# competitions between national teams: they get the lower appearance bar in scan.py (config.py: NATIONAL_TEAM_LEAGUES)
+NATIONAL_DISPLAY = {"UEFA Nations League", "CONCACAF Nations League", "World Cup Qualifiers (UEFA)", "World Cup 2026"}
 
 
 def _norm(text):
     import unicodedata
     t = unicodedata.normalize("NFKD", str(text)).encode("ascii", "ignore").decode().lower()
-    return re.sub(r"[^a-z0-9 ]+", " ", t).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", t)).strip()
 
 
 def resolve_names(specs, leagues):
@@ -78,11 +90,20 @@ def resolve_names(specs, leagues):
             pool = [lg for lg in pool if "b" in _norm(lg.get("name", "")).split()]
         elif display == "Serie B":
             pool = [lg for lg in pool if "b" in _norm(lg.get("name", "")).split()]
-        cands = [lg for lg in pool
-                 if want in _norm(lg.get("name", ""))
-                 and not any(b in f" {_norm(lg.get('name', ''))} " for b in BAD_WORDS)]
-        exact = [lg for lg in cands if _norm(lg.get("name", "")) == want]
-        cands = exact or cands
+        # a search that itself contains a "bad" word (World Cup ...) must not be excluded by it
+        bad = [b for b in BAD_WORDS if b.strip() not in want]
+
+        def pick_from(pool):
+            cands = [lg for lg in pool
+                     if want in _norm(lg.get("name", ""))
+                     and not any(b in f" {_norm(lg.get('name', ''))} " for b in bad)]
+            exact = [lg for lg in cands if _norm(lg.get("name", "")) == want]
+            return exact or cands
+
+        cands = pick_from(pool)
+        if not cands and ctry in REGION_COUNTRIES:
+            # the API may label pan-European / international competitions "Europe", "World", "International" ...
+            cands = pick_from([lg for lg in leagues if _norm(lg.get("country", "")) in REGION_COUNTRIES])
         if not cands:
             print(f"  ! Could not find '{search}' ({country}) in the API list. "
                   f"Try:  python fetch_data.py leagues \"{country}\"  then use --add ID:Name:Country")
@@ -90,7 +111,7 @@ def resolve_names(specs, leagues):
         if len(cands) > 1:
             print(f"\nSeveral matches for {display} ({country}):")
             for i, c in enumerate(cands, 1):
-                print(f"  {i}. id={c.get('id')}  name={c.get('name')!r}")
+                print(f"  {i}. id={c.get('id')}  name={c.get('name')!r}  country={c.get('country')!r}")
             pick = input(f"Which one? [1-{len(cands)}, Enter = skip] ").strip()
             if not (pick.isdigit() and 1 <= int(pick) <= len(cands)):
                 print("  skipped")
@@ -129,6 +150,25 @@ def choose(cands, key):
         pick = input(f"Which one is the main {label}? [1-{len(pool)}] ").strip()
         if pick.isdigit() and 1 <= int(pick) <= len(pool):
             return pool[int(pick) - 1]
+
+
+def mark_national(ids, path=CONFIG):
+    """Adds league ids to NATIONAL_TEAM_LEAGUES in config.py (creates the list if the file has none). Idempotent."""
+    if not ids:
+        return []
+    s = open(path, encoding="utf-8").read()
+    m = re.search(r"(NATIONAL_TEAM_LEAGUES\s*=\s*\[)(.*?)(\])", s, re.S)
+    if not m:
+        s = s.rstrip("\n") + "\n\n# national-team competitions: scan.py asks only NATIONAL_MIN_APPS (default 4) appearances per team instead of 10\nNATIONAL_TEAM_LEAGUES = []\n"
+        m = re.search(r"(NATIONAL_TEAM_LEAGUES\s*=\s*\[)(.*?)(\])", s, re.S)
+    existing = [int(x) for x in re.findall(r"\d+", re.sub(r"#.*", "", m.group(2)))]
+    new = [i for i in ids if i not in existing]
+    if new:
+        body = m.group(2).rstrip()
+        body += ("," if body.strip() and not body.rstrip().endswith(",") else "") + " " + ", ".join(str(i) for i in new)
+        s = s[:m.start(2)] + body + s[m.end(2):]
+        open(path, "w", encoding="utf-8").write(s)
+    return new
 
 
 def update_config(entries, path=CONFIG):
@@ -204,13 +244,16 @@ def main():
     ap.add_argument("--conference", type=int, help="Conference League id (skips the lookup)")
     ap.add_argument("--no-fetch", action="store_true", help="only edit config.py")
     ap.add_argument("--preset", choices=sorted(PRESETS), action="append", default=[],
-                    help="add a ready-made batch of 5 leagues by name (a or b)")
+                    help="add a ready-made batch by name: a or b (5 leagues each), c (UEFA Nations League), d (World Cup qualifiers + World Cup 2026)")
     ap.add_argument("--name", action="append", default=[], metavar="NAME|COUNTRY",
                     help='add a league by name, e.g. --name "Serie B|Italy" (repeatable)')
+    ap.add_argument("--national", action="store_true",
+                    help="treat the leagues given with --add as national-team competitions (lower appearance bar)")
     ap.add_argument("--dry-run", action="store_true", help="only show the IDs found, change nothing")
     args = ap.parse_args()
 
     entries = [parse_add(t) for t in args.add]
+    forced_national = {e[0] for e in entries} if args.national else set()
 
     by_name = [spec for key in args.preset for spec in PRESETS[key]]
     for text in args.name:
@@ -226,6 +269,8 @@ def main():
             print("Could not fetch the league list (offline or quota used up?). Retry later.")
             return
         entries += resolve_names(by_name, leagues)
+        if args.national:
+            forced_national |= {e[0] for e in entries}
         if args.dry_run:
             print("\nDry run: nothing changed.")
             return
@@ -267,7 +312,12 @@ def main():
         return
 
     added = update_config(entries)
+    nat = [lid for lid, name, _ in entries if name in NATIONAL_DISPLAY or lid in forced_national]
+    nat_added = mark_national(nat)
     print(f"\nconfig.py updated (backup: config.py.bak). Newly added ids: {added or 'none (already present)'}")
+    if nat:
+        print(f"National-team competitions (lower appearance bar in scan.py): {nat}"
+              + (f"  [newly marked: {nat_added}]" if nat_added else "  [already marked]"))
 
     if args.no_fetch:
         print("Skipping download (--no-fetch). Run again without it to download data.")

@@ -185,7 +185,8 @@
     'Swiss Super League': 'SUI', 'Championship': 'EFL', 'Serie B': 'SB', 'MLS': 'MLS',
     'Liga MX': 'MEX', 'Liga MX (Apertura)': 'MXA', 'Liga MX (Clausura)': 'MXC', '2. Bundesliga': 'BL2', 'Belgian Pro League': 'BEL',
     'Brasileirão Série B': 'BRB', 'Liga Profesional': 'ARG', 'Saudi Pro League': 'KSA',
-    'Danish Superliga': 'DEN'
+    'Danish Superliga': 'DEN', 'UEFA Nations League': 'UNL', 'CONCACAF Nations League': 'CNL',
+    'World Cup Qualifiers (UEFA)': 'WCQ', 'World Cup 2026': 'WC26'
 } %}
 
     <!-- ================= TOP BAR ================= -->
@@ -207,6 +208,7 @@
         <button class="x" type="button" onclick="toggleDrawer()" aria-label="Close">×</button>
         <h3>Quick Links</h3>
         <button class="dl" type="button" onclick="goTab('matches')">📅 All Matches</button>
+        <button class="dl" type="button" onclick="goTab('x12')">🏆 1X2</button>
         <button class="dl" type="button" onclick="goTab('trends')">📈 Trends</button>
         <button class="dl" type="button" onclick="goTab('shots')">📊 Shots</button>
         <button class="dl" type="button" onclick="goTab('acca')">🎯 Acca</button>
@@ -223,6 +225,9 @@
             </button>
             <button class="tab" data-tab="btts" onclick="switchTab('btts', this)">
                 ⚽ BTTS <span class="badge-count">{{ btts_rows|length }}</span>
+            </button>
+            <button class="tab" data-tab="x12" onclick="switchTab('x12', this)">
+                🏆 1X2 <span class="badge-count">{{ x12_rows|length }}</span>
             </button>
             <button class="tab" data-tab="trends" onclick="switchTab('trends', this)">
                 📈 Trends
@@ -419,6 +424,86 @@
             {% else %}
                 <div class="empty">No upcoming matches to predict.<br>
                     <span class="hint">BTTS uses the same fixtures as All Matches.</span></div>
+            {% endif %}
+        </section>
+
+        <!-- ================= 1X2 ================= -->
+        <section id="x12" class="panel">
+            <div class="pill-title"><span>Match Result · 1X2</span></div>
+            <div class="hint" style="margin:-6px 0 12px;">
+                Home win / Draw / Away win from the same expected goals as Over/Under 2.5 and BTTS · bookmaker odds shown when available
+            </div>
+
+            {% if x12_rows %}
+                <div class="seg" id="xDateFilter">
+                    <button class="date-btn" data-date="all" onclick="filterDate('x12', 'all', this)">
+                        All <span class="dc">{{ x12_rows|length }}</span>
+                    </button>
+                </div>
+                <div class="date-headline" id="xDateHeadline"></div>
+
+                <div class="sec-bar">Match Result · Home / Draw / Away</div>
+                <div class="mlist" id="x12List">
+                    <div class="mhead">
+                        <span class="c">League</span>
+                        <span>Match</span>
+                        <span class="c">Tip</span>
+                        <span class="c">Prob</span>
+                        <span class="c hide-sm">Odds</span>
+                        <span class="c hide-sm">H · D · A %</span>
+                        <span class="c hide-md">Top score</span>
+                        <span></span>
+                    </div>
+
+                    {% for r in x12_rows %}
+                        <div class="mrow" data-match-date="{{ r.date|eat_date }}" onclick="toggleRow(this)">
+                            <div class="mleague">
+                                <span class="lgcode">{{ LG.get(r.league_name, r.league_name[:3]|upper) }}</span>
+                                <span class="ko">{{ r.date|eat_time }}</span>
+                            </div>
+                            <div class="mteams">
+                                <span class="t">{{ r.home }}</span>
+                                <span class="t">{{ r.away }}</span>
+                            </div>
+                            <div class="mtip {{ 'x-home' if r.pick_key == 'H' else ('x-away' if r.pick_key == 'A' else 'x-draw') }}">
+                                {{ ('HOME' if r.pick_key == 'H' else ('DRAW' if r.pick_key == 'D' else 'AWAY')) }}
+                                <span class="tier {{ r.tier }}">{{ r.tier }}</span>
+                            </div>
+                            <div class="mprob">{{ (r.prob*100)|round(1) }}%</div>
+                            <div class="modds hide-sm">{{ r.odds if r.odds else '—' }}</div>
+                            <div class="mxg hide-sm">{{ (r.p_home*100)|round|int }} · {{ (r.p_draw*100)|round|int }} · {{ (r.p_away*100)|round|int }}</div>
+                            <div class="mscore hide-md">{{ r.top_2_scores[0].score if r.top_2_scores else "—" }}</div>
+                            <button class="mstat" type="button" aria-label="Details">▾</button>
+
+                            <div class="mdetail">
+                                <div><div class="k">{{ r.home }} win</div><div class="v over">{{ (r.p_home*100)|round(1) }}%{% if r.odds_home %} @ {{ r.odds_home }}{% endif %}</div></div>
+                                <div><div class="k">Draw</div><div class="v">{{ (r.p_draw*100)|round(1) }}%{% if r.odds_draw %} @ {{ r.odds_draw }}{% endif %}</div></div>
+                                <div><div class="k">{{ r.away }} win</div><div class="v under">{{ (r.p_away*100)|round(1) }}%{% if r.odds_away %} @ {{ r.odds_away }}{% endif %}</div></div>
+                                {% if r.book %}
+                                <div><div class="k">Bookmaker implied (H · D · A)</div><div class="v">{{ r.book.H|round|int }} · {{ r.book.D|round|int }} · {{ r.book.A|round|int }}%</div></div>
+                                {% endif %}
+                                <div><div class="k">Value (EV on pick)</div>
+                                    <div class="v {% if r.ev is not none and r.ev > 0 %}over{% endif %}">{% if r.ev is not none %}{{ '%+.1f'|format(r.ev*100) }}%{% else %}no odds{% endif %}</div></div>
+                                <div><div class="k">Expected goals</div><div class="v">{{ r.lh }} + {{ r.la }}</div></div>
+                                <div><div class="k">Top 2 scores</div>
+                                    <div class="v">{% for s in r.top_2_scores %}{{ s.score }} {{ s.prob }}%{% if not loop.last %} · {% endif %}{% endfor %}</div></div>
+                                <div><div class="k">Kickoff</div><div class="v">{{ r.date|eat_full }} EAT</div></div>
+                                <div><div class="k">Data (appearances H / A)</div><div class="v">{{ r.home_apps }} / {{ r.away_apps }}</div></div>
+                                <div><div class="k">League</div><div class="v">{{ r.league_name }}</div></div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+                <div class="no-filter-results" id="xNoFilter">No matches on this date.</div>
+                <div class="hint" style="margin-top:10px;">
+                    Tip = the most likely outcome. Backtest on 3,429 of your matches: the probabilities clearly beat the base rate, draws are predicted at about their real rate,
+                    and strong favourites (60%+) won more often than predicted (about 72% when the model said 60–70%), while big underdogs were slightly over-rated.
+                    A draw is rarely the single most likely result, so it seldom appears as a Tip.
+                    {% if not x12_rows|selectattr('odds_home')|list %}No 1X2 odds are in today's saved picks: tap ↻ Refresh once to load them.{% endif %}
+                </div>
+            {% else %}
+                <div class="empty">No upcoming matches to predict.<br>
+                    <span class="hint">1X2 uses the same fixtures as All Matches.</span></div>
             {% endif %}
         </section>
 
@@ -694,6 +779,8 @@
             <div class="mlist" id="datePickMatches"></div>
             <div class="sec-bar" id="datePickBttsBar" style="display:none;">Both Teams To Score · Yes / No</div>
             <div class="mlist" id="datePickBtts"></div>
+            <div class="sec-bar" id="datePick1x2Bar" style="display:none;">Match Result · 1X2</div>
+            <div class="mlist" id="datePick1x2"></div>
             <div class="sec-bar" id="datePickResultsBar" style="display:none;">Results</div>
             <div class="rl" id="datePickResults" style="display:none;"></div>
             <div class="no-filter-results" id="datePickNone">No matches or results on this date.</div>
@@ -776,7 +863,7 @@
                                     {% endif %}
                                 </div>
 
-                                <div class="hint" style="margin-top:10px;">Over/Under 2.5 and BTTS, highest probability first:</div>
+                                <div class="hint" style="margin-top:10px;">Over/Under 2.5, BTTS and 1X2, highest probability first:</div>
                                 {% for i in result.ranked %}
                                     <div class="row">
                                         <span class="label">{{ loop.index }}. {{ i.pick }}
@@ -789,7 +876,7 @@
                                     </div>
                                 {% endfor %}
                                 <div class="hint" style="margin-top:6px;">
-                                    Ranked by the model's probability for each pick. BTTS is well calibrated in backtests;
+                                    Ranked by the model's probability for each pick. BTTS and 1X2 are well calibrated in backtests (1X2 is a little cautious on strong favourites);
                                     58% picks are close to coin-flips, so check the real price (EV) before acting.
                                 </div>
                             {% endif %}
@@ -823,6 +910,26 @@
                                 {{ odds_row('BTTS No', result.btts.p_no*100, result.btts.odds_no) }}
                                 <div class="row"><span class="label">Pick</span>
                                     <span class="value">{{ result.btts.pick }} · {{ (result.btts.prob*100)|round(1) }}% <span class="tier {{ result.btts.tier }}">{{ result.btts.tier }}</span></span></div>
+                            {% endif %}
+
+                            {% if result.x12 %}
+                                {% set x = result.x12 %}
+                                <h2 style="margin-top:14px;">🏆 Match Result · 1X2</h2>
+                                <div class="row"><span class="label">{{ result.home_team }} win</span>
+                                    <span class="value over">{{ (x.p_home*100)|round(1) }}%</span></div>
+                                <div class="row"><span class="label">Draw</span>
+                                    <span class="value" style="color:var(--gold);">{{ (x.p_draw*100)|round(1) }}%</span></div>
+                                <div class="row"><span class="label">{{ result.away_team }} win</span>
+                                    <span class="value under">{{ (x.p_away*100)|round(1) }}%</span></div>
+                                {{ odds_row('Home win', x.p_home*100, x.odds_home) }}
+                                {{ odds_row('Draw', x.p_draw*100, x.odds_draw) }}
+                                {{ odds_row('Away win', x.p_away*100, x.odds_away) }}
+                                {% if x.book %}
+                                    <div class="row"><span class="label">Bookmaker implied (H · D · A)</span>
+                                        <span class="value" style="font-size:.9rem;">{{ x.book.H|round|int }} · {{ x.book.D|round|int }} · {{ x.book.A|round|int }}%</span></div>
+                                {% endif %}
+                                <div class="row"><span class="label">Pick</span>
+                                    <span class="value">{{ x.pick }} · {{ (x.prob*100)|round(1) }}% <span class="tier {{ x.tier }}">{{ x.tier }}</span></span></div>
                             {% endif %}
 
                             <div class="hint" style="margin-top:12px;">
@@ -915,7 +1022,8 @@
 
         const FILTERS = {
             goals:   {list: '#matchList',  bar: 'dateFilter',  head: 'dateHeadline',  none: 'noFilterResults'},
-            btts:    {list: '#bttsList',    bar: 'bDateFilter', head: 'bDateHeadline', none: 'bNoFilter'}
+            btts:    {list: '#bttsList',    bar: 'bDateFilter', head: 'bDateHeadline', none: 'bNoFilter'},
+            x12:     {list: '#x12List',     bar: 'xDateFilter', head: 'xDateHeadline', none: 'xNoFilter'}
         };
 
         function initDateFilter(key) {
@@ -1093,6 +1201,8 @@
                 const b = e.target.closest('button[data-market]'); if (!b) return;
                 st.market = b.dataset.market; st.side = 'best';
                 document.querySelectorAll('#accaMarket button').forEach(x => x.classList.toggle('active', x === b));
+                const mk = CFG.markets.find(x => x.key === st.market);
+                if (mk && mk.min_prob != null) document.getElementById('accaProb').value = mk.min_prob;   // e.g. 45 for 1X2, 58 for Over/Under and BTTS
                 drawSides(); clearOut();
             });
             document.getElementById('accaSide').addEventListener('click', e => {
@@ -1164,7 +1274,7 @@
         let shotsReady = false, shotsBusy = false;
         const escS = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
         const f1 = v => (v == null ? '—' : Number(v).toFixed(1));
-        const LGMAP = {{ {'Premier League': 'EPL', 'La Liga': 'LAL', 'Serie A': 'SA', 'Bundesliga': 'BUN', 'Ligue 1': 'L1', 'Champions League': 'UCL', 'Europa League': 'UEL', 'Conference League': 'UECL', 'Eredivisie': 'NED', 'Liga Portugal': 'POR', 'Süper Lig': 'TUR', 'Brasileirão Série A': 'BRA', 'Eliteserien': 'NOR', 'Swiss Super League': 'SUI'}|tojson }};
+        const LGMAP = {{ LG|tojson }};       // same badge codes as the server-side list above
 
         function setShotsDate(iso) { document.getElementById('shotsPick').value = iso; loadShots(false); }
         function shiftShotsDate(delta) {
@@ -1426,8 +1536,10 @@
             const mBox = document.getElementById('datePickMatches');
             const rBox = document.getElementById('datePickResults');
             const bBox = document.getElementById('datePickBtts');
+            const xBox = document.getElementById('datePick1x2');
             mBox.innerHTML = '';
             bBox.innerHTML = '';
+            xBox.innerHTML = '';
             rBox.innerHTML = '';
             let n = 0;
             if (iso) {
@@ -1436,6 +1548,12 @@
                     c.classList.remove('open');
                     c.style.display = '';
                     bBox.appendChild(c); n++;
+                });
+                document.querySelectorAll('#x12List .mrow[data-match-date="' + iso + '"]').forEach(r => {
+                    const c = r.cloneNode(true);
+                    c.classList.remove('open');
+                    c.style.display = '';
+                    xBox.appendChild(c); n++;
                 });
                 document.querySelectorAll('#matchList .mrow[data-match-date="' + iso + '"]').forEach(r => {
                     const c = r.cloneNode(true);
@@ -1451,6 +1569,7 @@
             }
             document.getElementById('datePickGoalsBar').style.display = mBox.children.length ? '' : 'none';
             document.getElementById('datePickBttsBar').style.display = bBox.children.length ? '' : 'none';
+            document.getElementById('datePick1x2Bar').style.display = xBox.children.length ? '' : 'none';
             document.getElementById('datePickResultsBar').style.display = rBox.children.length ? '' : 'none';
             rBox.style.display = rBox.children.length ? '' : 'none';
             document.getElementById('datePickHeadline').textContent = iso ? headline(iso) : '';
@@ -1461,6 +1580,7 @@
             setPickedDate(isoPlus(0));
             initDateFilter('goals');
             initDateFilter('btts');
+            initDateFilter('x12');
 
             // starting tab: ?tab=... in the URL, or Single Match right after a prediction
             const hasResult = {{ 'true' if result else 'false' }};

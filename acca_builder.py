@@ -17,14 +17,17 @@ So when the most probable combination falls short of the combined-odds target, t
 probable combination that does reach it (swapping in lower-probability, higher-paying legs, or using 3 legs instead of 2).
 The search is exact (a Pareto dynamic programme), not a heuristic. There is no value / expected-value test.
 
-Markets: ou25 (Over/Under 2.5) and btts (Both Teams To Score Yes/No). Nothing else.
+Markets: ou25 (Over/Under 2.5), btts (Both Teams To Score Yes/No) and 1x2 (Match Result: Home / Draw / Away). Nothing else.
+For 1x2 the default minimum probability is lower (45%) because even a strong favourite rarely reaches 58%; the real 1X2 odds
+come from the same odds request as the other markets (home_win / draw / away_win).
 
 IMPORTANT: acca odds multiply, and so do the risks. The "all legs win" chance below assumes the legs are
 independent and uses the model's probabilities, which in backtests were NOT better than the bookmaker's own.
 A higher combined price is not better value. Not betting advice.
 
 Optional defaults (config.py, already present from your older acca settings):
-    ACCA_MIN_LEG_PROB = 0.58     # minimum model probability per leg
+    ACCA_MIN_LEG_PROB = 0.58     # minimum model probability per leg (Over/Under, BTTS)
+    ACCA_MIN_LEG_PROB_1X2 = 0.45 # the same for the 1X2 market
     ACCA_MIN_LEG_ODDS = 1.15     # minimum real odds per leg
     ACCA_MIN_ODDS     = 2.0      # minimum COMBINED odds of the acca
     ACCA_MAX_LEGS     = 3        # default maximum number of matches (2 or 3)
@@ -35,6 +38,7 @@ import pandas as pd
 
 import btts_model as BM
 import config
+import match_result as MR
 
 EAT = timezone(timedelta(hours=3))
 
@@ -49,7 +53,15 @@ DEFAULT_LEGS = max(MIN_LEGS, min(MAX_LEGS, int(getattr(config, "ACCA_MAX_LEGS", 
 MARKETS = {
     "ou25": ("Over/Under 2.5", ("Over", "Under")),
     "btts": ("Both Teams To Score", ("Yes", "No")),
+    "1x2": ("Match Result 1X2", ("Home", "Draw", "Away")),
 }
+# the minimum model probability a leg needs, per market (1X2 outcomes are spread over three results, so the bar is lower)
+MARKET_MIN_PROB = {"ou25": DEFAULT_MIN_PROB, "btts": DEFAULT_MIN_PROB,
+                   "1x2": float(getattr(config, "ACCA_MIN_LEG_PROB_1X2", 0.45))}
+
+
+def default_min_prob(market):
+    return MARKET_MIN_PROB.get(market, DEFAULT_MIN_PROB)
 
 
 # ------------------------------------------------------------------ helpers
@@ -94,6 +106,12 @@ def selections_for(m):
     b = BM.single(lh, la, yes_o, no_o)
     out["btts"].append(_sel("btts", "Yes", "BTTS Yes", b["p_yes"], yes_o))
     out["btts"].append(_sel("btts", "No", "BTTS No", b["p_no"], no_o))
+
+    # Match result 1X2 (model probabilities from the same expected goals + real 1X2 odds when the fixture has them)
+    r = MR.single(lh, la, m.get("odds_home"), m.get("odds_draw"), m.get("odds_away"))
+    out["1x2"].append(_sel("1x2", "Home", f"{m.get('home', 'Home')} to win", r["p_home"], r["odds_home"]))
+    out["1x2"].append(_sel("1x2", "Draw", "Draw", r["p_draw"], r["odds_draw"]))
+    out["1x2"].append(_sel("1x2", "Away", f"{m.get('away', 'Away')} to win", r["p_away"], r["odds_away"]))
 
     return out
 
@@ -174,7 +192,7 @@ def build_acca(matches, market, side="best", day=None, legs=None, min_prob=None,
 
     legs = DEFAULT_LEGS if legs is None else max(MIN_LEGS, min(int(legs), MAX_LEGS))
     lo = MIN_LEGS if min_legs is None else max(MIN_LEGS, min(int(min_legs), legs))
-    min_prob = DEFAULT_MIN_PROB if min_prob is None else float(min_prob)
+    min_prob = default_min_prob(market) if min_prob is None else float(min_prob)
     min_odds = DEFAULT_MIN_ODDS if min_odds is None else float(min_odds)
     min_combined = DEFAULT_MIN_COMBINED if min_combined is None else max(1.01, float(min_combined))
     now = now or datetime.now(timezone.utc)
@@ -346,12 +364,30 @@ def _selftest():
 
     # 7. both markets and every side work; anything else is rejected
     ms2 = [fx(i, 2 + i) for i in (1, 2, 3, 4)]
-    assert set(MARKETS) == {"ou25", "btts"}
+    assert set(MARKETS) == {"ou25", "btts", "1x2"}
     for mk in ("btts", "ou25"):
         assert isinstance(build_acca(ms2, mk, "best", min_prob=0.0, min_odds=1.0, min_combined=1.5, now=now)["ok"], bool)
     assert build_acca(ms2, "btts", "Yes", min_prob=0.0, min_odds=1.0, min_combined=1.5, now=now)["legs"][0]["label"] == "BTTS Yes"
     assert build_acca(ms2, "btts", "No", min_prob=0.0, min_odds=1.0, min_combined=1.5, now=now)["legs"][0]["label"] == "BTTS No"
-    for bad in (("nope", "best"), ("ou25", "Maybe"), ("btts", "Over"), ("ou25", "Yes")):
+    # 1X2: three sides, team-named labels, real odds only, the lower default probability, and sides of other markets rejected
+    def fx3(i, hours, lh=1.9, la=0.9, oh=1.70, od=3.8, oa=5.0):
+        d = fx(i, hours, lh=lh, la=la)
+        d.update(odds_home=oh, odds_draw=od, odds_away=oa)
+        return d
+    x = [fx3(i, 2 + i) for i in (1, 2, 3)]
+    r = build_acca(x, "1x2", "Home", min_prob=0.40, min_odds=1.1, min_combined=2.0, now=now)
+    assert r["ok"] and all(l["label"] == f"H{l['event_id']} to win" for l in r["legs"]), r["message"]
+    assert all(abs(l["prob"] - MR.single(1.9, 0.9)["p_home"]) < 1e-9 for l in r["legs"])
+    rd = build_acca(x, "1x2", "Draw", min_prob=0.0, min_odds=1.1, min_combined=2.0, now=now)
+    assert rd["ok"] and all(l["label"] == "Draw" and l["odds"] == 3.8 for l in rd["legs"])
+    rb = build_acca(x, "1x2", "best", min_prob=0.40, min_odds=1.1, min_combined=2.0, now=now)
+    assert rb["ok"] and all(l["side"] == "Home" for l in rb["legs"]), "best side = the most probable outcome"
+    assert build_acca(x, "1x2", "Home", now=now)["params"]["min_prob"] == 0.45, "1X2 default minimum probability"
+    assert build_acca(x, "btts", "Yes", now=now)["params"]["min_prob"] == DEFAULT_MIN_PROB
+    nox = [fx(i, 2 + i) for i in (1, 2, 3)]                           # fixtures without 1X2 odds: never a model-made price
+    rn = build_acca(nox, "1x2", "best", min_prob=0.0, min_odds=1.0, min_combined=1.5, now=now)
+    assert not rn["ok"] and rn["funnel"]["with_odds"] == 0 and "real bookmaker odds" in rn["message"]
+    for bad in (("nope", "best"), ("ou25", "Maybe"), ("btts", "Over"), ("ou25", "Yes"), ("1x2", "Over"), ("1x2", "Yes"), ("btts", "Draw")):
         try:
             build_acca(ms2, *bad, now=now)
             raise AssertionError(f"should have rejected {bad}")

@@ -3,7 +3,7 @@
 Single-entry daily runner with a once-a-day recent-matches fetcher.
 
 The model covers two markets only: Over/Under 2.5 goals and Both Teams To Score (Yes/No).
-Tabs: All Matches (Over/Under 2.5), BTTS, Acca, Results, Date and Single Match.
+Tabs: All Matches (Over/Under 2.5), BTTS, 1X2, Trends, Shots, Acca, Results, Date and Single Match.
 """
 import json
 import os
@@ -755,7 +755,7 @@ def _norm(text):
 
 
 def _rank_selections(pred):
-    """Over/Under 2.5 and BTTS on the Single Match card as picks, ranked by the model's probability for the
+    """Over/Under 2.5, BTTS and 1X2 on the Single Match card as picks, ranked by the model's probability for the
     chosen side. Each: market, pick, prob (%), tier, real odds (or None), model odds, EV (if real)."""
     real = pred.get("real") or {}
     items = []
@@ -776,6 +776,12 @@ def _rank_selections(pred):
     b = pred.get("btts")
     if b:
         add("BTTS", b["pick"], b["prob"] * 100, b["tier"], b.get("odds"))
+
+    x = pred.get("x12")
+    if x:
+        label = {"H": f"{pred.get('home_team', 'Home')} to win", "D": "Draw",
+                 "A": f"{pred.get('away_team', 'Away')} to win"}[x["pick_key"]]
+        add("Match Result 1X2", label, x["prob"] * 100, x["tier"], x.get("odds"))
 
     items.sort(key=lambda i: i["prob"], reverse=True)
     return items
@@ -899,7 +905,8 @@ def index():
                     fx = _cached_fixture(hid, aid)
                     pred["real"] = ({"over25": fx.get("over_odds"), "under25": fx.get("under_odds"),
                                      "btts_yes": fx.get("btts_yes_odds"), "btts_no": fx.get("btts_no_odds"),
-                                     "kickoff": fx.get("date")} if fx else None)
+                                     "odds_home": fx.get("odds_home"), "odds_draw": fx.get("odds_draw"),
+                                     "odds_away": fx.get("odds_away"), "kickoff": fx.get("date")} if fx else None)
                     try:
                         from btts_model import single as btts_single
                         pred["btts"] = btts_single(pred["lambda_home"], pred["lambda_away"],
@@ -907,6 +914,14 @@ def index():
                                                    (pred["real"] or {}).get("btts_no"))
                     except Exception as e:
                         pred["btts"] = None
+                    try:
+                        from match_result import single as x12_single
+                        rl = pred["real"] or {}
+                        pred["x12"] = x12_single(pred["lambda_home"], pred["lambda_away"],
+                                                 rl.get("odds_home"), rl.get("odds_draw"), rl.get("odds_away"))
+                    except Exception as e:
+                        print(f"1X2 for single match failed: {e}")
+                        pred["x12"] = None
                     pred["ranked"] = _rank_selections(pred)
                     result = pred
                 except Exception as e:
@@ -915,7 +930,8 @@ def index():
     try:
         import acca_builder as AB
         acca_days = AB.days_available(all_matches)
-        acca_cfg = {"markets": [{"key": k, "title": t, "sides": list(sd)} for k, (t, sd) in AB.MARKETS.items()],
+        acca_cfg = {"markets": [{"key": k, "title": t, "sides": list(sd), "min_prob": round(AB.default_min_prob(k) * 100)}
+                                for k, (t, sd) in AB.MARKETS.items()],
                     "min_prob": round(AB.DEFAULT_MIN_PROB * 100), "min_odds": AB.DEFAULT_MIN_ODDS,
                     "max_legs": AB.MAX_LEGS, "min_legs": AB.MIN_LEGS,
                     "min_combined": AB.DEFAULT_MIN_COMBINED}
@@ -932,6 +948,13 @@ def index():
     except Exception as e:
         print(f"BTTS build failed: {e}")
         btts_rows = []
+
+    try:
+        from match_result import match_result_predictions
+        x12_rows = match_result_predictions(all_matches)
+    except Exception as e:
+        print(f"1X2 build failed: {e}")
+        x12_rows = []
 
     teams_by_league = {}
     if DF is not None and not DF.empty:
@@ -962,6 +985,7 @@ def index():
         teams_by_league=teams_by_league,
         shots_window=_shots_window(),
         btts_rows=sorted(btts_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
+        x12_rows=sorted(x12_rows, key=lambda r: r["prob"], reverse=True),     # most likely outcome first
     )
 
 
@@ -973,7 +997,7 @@ def api_matches():
 @app.route("/api/acca")
 def api_acca():
     """Acca for ONE market from today's saved fixtures and real bookmaker odds. Makes no API requests of its own.
-    Query: market (ou25|btts), side (best or a side), day (YYYY-MM-DD, EAT), legs (auto = best of 2 or 3 matches,
+    Query: market (ou25|btts|1x2), side (best or a side), day (YYYY-MM-DD, EAT), legs (auto = best of 2 or 3 matches,
     or exactly 2, or exactly 3), min_prob (%), min_odds (per leg), min_combined (combined odds target).
     By probability only."""
     import acca_builder as AB

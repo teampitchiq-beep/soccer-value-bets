@@ -27,6 +27,7 @@ Runs from the terminal on Kali Linux (any Linux with Python 3.10+ works). Data c
 |---|---|
 | 📅 **All Matches** | Upcoming fixtures: Over/Under 2.5 %, odds, xG, likely scorelines, confidence tier. Expand a row for BTTS as well |
 | 🎯 **Acca** | Pick a day, a market (Over/Under 2.5 or BTTS) and a side; builds the most probable acca of 2 or 3 matches with combined odds of 2.00+ from real bookmaker odds, or tells you nothing qualified |
+| 🏆 **1X2** | Match result (Home win / Draw / Away win) from the same expected goals, with real 1X2 bookmaker odds, bookmaker-implied probabilities and the value (EV) on the pick. Date chips like the BTTS tab; also listed in the Date tab |
 | 📈 **Trends** | For every team playing on a chosen day (Prev / Next / Today / calendar, past or future): the most demanding Over / Under line its last 10 matches cleared, for 8 stats (shots, shots on target, corners, fouls, yellow cards, offsides, throw-ins, GK saves) in three views (team For, Against, Match total). Each card shows hit rate, average, median, a last-10 bar chart with the line drawn across, the model's probability for that line in the actual fixture, and the next match |
 | 📊 **Shots** | Team shots per fixture: home team's average shots in its last 10 home matches, away team's in its last 10 away matches, their mean (Avg), fixtures listed highest first. Date picker (Prev / Next / Today) works for any past or future day |
 | ⚽ **BTTS** | Both Teams To Score Yes/No, highest probability first, with bookmaker odds and value (EV) |
@@ -88,6 +89,40 @@ better bet. Of the older accumulator settings in `config.py`, the new builder re
 `ACCA_POOL` and the `CACCA_*` settings belonged to a previous generator that is no longer part of the project, and are ignored.
 The same logic is available as JSON at
 `/api/acca?market=ou25&side=Over&legs=auto&min_prob=58&min_odds=1.15&min_combined=2` (`market` is `ou25` or `btts`; `legs` is `auto` for the best of 2 or 3, `2`, or `3`).
+
+## 1X2 (Match Result)
+
+- **Model:** independent Poisson goals from the stored expected goals (`lh` / `la`), summed over the scoreline grid into P(Home), P(Draw), P(Away) (`match_result.py`).
+  A small draw boost (`DRAW_BOOST = 0.05`) corrects plain Poisson's under-prediction of draws.
+- **Backtest (3,429 matches, probabilities from earlier data only):** log loss 1.0088 against 1.0655 for always predicting the base rate, so the probabilities carry real signal.
+  Draws are predicted at 24% against 24.6% actual; mid-range outcomes are well calibrated; strong favourites are under-rated (60-70% predicted -> about 72% won) and big underdogs slightly over-rated.
+  Top-pick accuracy 51% (always-home would be 45%). A draw is almost never the single most likely result, so it rarely shows as the Tip.
+- **Odds:** `home_win`, `draw` and `away_win` come in the same `/events/{id}/odds/` response as Over/Under and BTTS, so they cost no extra request. Fixtures saved before this update
+  have no 1X2 odds until you tap ↻ Refresh once; the probabilities show immediately.
+- **Acca:** "Match Result 1X2" is a market in the Acca builder (sides Home / Draw / Away / Best side). Legs use real 1X2 odds only. The default minimum probability for this market is 45%
+  (58% for the others) because 1X2 outcomes rarely reach 58%; it switches automatically when you pick the market (`ACCA_MIN_LEG_PROB_1X2`).
+- **Single Match:** the card has a 🏆 Match Result block (Home / Draw / Away probabilities, real vs model odds, bookmaker-implied split when the fixture has all three prices) and the 1X2 pick joins the ranked selections next to Over/Under 2.5 and BTTS.
+- Settings (`config.py`): `DRAW_BOOST = 0.05`, `X12_HIGH_PROB = 0.60`, `X12_MEDIUM_PROB = 0.50`, `ACCA_MIN_LEG_PROB_1X2 = 0.45`.
+
+## National teams: UEFA Nations League
+
+Bzzoiro tracks the UEFA Nations League at its top "Full" tier (stats, xG, shot maps and odds on every played match), so it works like any other league in the model.
+
+    python add_leagues.py --preset c --dry-run    # shows the league id it finds (1-2 requests), changes nothing
+    python add_leagues.py --preset c              # adds it to config.py and downloads two seasons with xG
+    python add_leagues.py --preset d              # optional: World Cup qualifiers (UEFA) + World Cup 2026, see below
+
+What is different for national teams, and what the code does about it:
+- **Own baseline:** the model already gives every league its own goal baseline and home advantage, so the Nations League gets both estimated from its own matches.
+- **Few matches per team:** a national team plays about 10-14 competitive matches in your data window (clubs play 40+). The scanner normally skips a fixture if either team has under 10
+  appearances, which would drop most Nations League fixtures, so national-team competitions use a lower bar (`NATIONAL_MIN_APPS`, default 4, only for the leagues in
+  `NATIONAL_TEAM_LEAGUES`; `add_leagues.py` fills that list in for you). With so little data a team's rating is pulled strongly toward the competition average, so early predictions are
+  cautious and sharpen as matches are played. Probabilities for lopsided pairings (Spain v a Division D side) will be too moderate until the ratings catch up.
+- **More data helps:** the same national teams play World Cup qualifiers and the World Cup. `--preset d` adds those (about 300 more matches) so the Nations League ratings rest on more games.
+  It is optional and costs more API requests, but it is the most effective way to improve the ratings.
+- **Trends tab:** its cards need a team's last 10 matches in the data; many national teams have fewer, so they may show no trend cards at first.
+- **Not modelled:** neutral venues (the Nations League finals are played on neutral ground, and home advantage is still applied there) and squad rotation in friendlies-style matches.
+- **CONCACAF Nations League** (Bzzoiro "Advanced" tier) can be added the same way: `python add_leagues.py --name "Nations League|North America" --national`.
 
 ## Look and feel
 

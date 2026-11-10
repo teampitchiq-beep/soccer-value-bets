@@ -20,6 +20,14 @@ from model import load_data, predict_lambdas, over_under_2_5, classify_confidenc
 
 HEADERS = {"Authorization": f"Token {BZZOIRO_API_KEY}"}
 DEFAULT_MIN_APPS = 10   # total appearances across ALL leagues (was 15 within one league)
+
+# National-team competitions (UEFA Nations League, World Cup qualifiers ...): national teams play a handful of matches a year, so
+# requiring 10 appearances would silently drop most of their fixtures. They get a lower bar; with so little data their ratings are
+# strongly shrunk toward the competition average, which the Over/Under, BTTS and 1X2 numbers inherit (config.py: NATIONAL_TEAM_LEAGUES,
+# NATIONAL_MIN_APPS; add_leagues.py fills the first one in for you).
+import config as _cfg
+NATIONAL_LEAGUES = {int(x) for x in (getattr(_cfg, "NATIONAL_TEAM_LEAGUES", None) or [])}
+NATIONAL_MIN_APPS = int(getattr(_cfg, "NATIONAL_MIN_APPS", 4))
 ODDS_WORKERS = 6
 
 
@@ -118,6 +126,10 @@ def fetch_event_odds(event_id):
         "under_25": odds.get("under_25_goals"),
         "btts_yes": odds.get("btts_yes"),
         "btts_no":  odds.get("btts_no"),
+        # 1X2 (documented keys of the same /odds/ response, so no extra request)
+        "home_win": odds.get("home_win"),
+        "draw":     odds.get("draw"),
+        "away_win": odds.get("away_win"),
     }
 
 
@@ -182,7 +194,11 @@ def get_todays_matches(days=2, min_apps=DEFAULT_MIN_APPS):
         except (TypeError, ValueError):
             skipped_no_history += 1
             continue
-        if ha < min_apps or aa < min_apps:
+        try:
+            need = min(min_apps, NATIONAL_MIN_APPS) if int(m.get("league_id")) in NATIONAL_LEAGUES else min_apps
+        except (TypeError, ValueError):
+            need = min_apps
+        if ha < need or aa < need:
             skipped_no_history += 1
             continue
         m["home_apps"] = ha
@@ -247,6 +263,9 @@ def get_todays_matches(days=2, min_apps=DEFAULT_MIN_APPS):
             "under_odds":   under_o,
             "btts_yes_odds": odds.get("btts_yes"),
             "btts_no_odds":  odds.get("btts_no"),
+            "odds_home":     odds.get("home_win"),
+            "odds_draw":     odds.get("draw"),
+            "odds_away":     odds.get("away_win"),
             "model_pick":   model_pick,
             "model_prob":   model_prob,
             "book_odds":    book_odds,
