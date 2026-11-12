@@ -124,6 +124,36 @@ What is different for national teams, and what the code does about it:
 - **Not modelled:** neutral venues (the Nations League finals are played on neutral ground, and home advantage is still applied there) and squad rotation in friendlies-style matches.
 - **CONCACAF Nations League** (Bzzoiro "Advanced" tier) can be added the same way: `python add_leagues.py --name "Nations League|North America" --national`.
 
+## Date chips
+
+The date bar on All Matches, BTTS and 1X2 always shows **Today** and **Tomorrow** chips, with a 0 (muted) when there are no fixtures that day, so you can tell at a glance that nothing is scheduled. It opens on the earliest day that has matches.
+
+## 📒 Acca tracking
+
+Inside the **Acca** tab there are two views: 🛠 **Build** and 📒 **Tracking** (a Quick Links entry jumps straight to it; the badge counts accas still pending).
+After you generate an acca, tap **➕ Track this acca**: it is saved in `data/acca_tracker.json` with **1 unit** staked by default (change the units before adding, or per acca later).
+Every acca belongs to one market, so tracking has **three separate sections: BTTS, Over / Under 2.5 and Match Result 1X2**. Each shows:
+- **ROI** (profit ÷ units staked), **win rate**, **profit** in units, and a won / lost / pending bar;
+- **streaks**: winning and losing streaks (a streak = 2 or more identical results in a row, in time order), plus the longest winning and losing runs and the current run;
+- average odds, the model's expected win rate next to the real one, max drawdown and units still at risk;
+- a **profit curve** (cumulative units, one dot per settled acca: green = won, red = lost, hover for details) and a W/L strip of the latest results;
+- the list of accas (newest first). Open one to see each leg's result, edit its stake, void it (postponed match, left out of every statistic) or delete it.
+
+**Settlement is automatic** from your finished-match results (`matches.csv`, refreshed by the daily data update): an acca is **lost** as soon as one leg loses and **won** when every leg has won; **↻ Settle now** re-checks immediately.
+A new acca can only be tracked once (the same legs and sides are rejected as a duplicate). Flat 1-unit stakes make the sections comparable; the ROI of a handful of accas is noisy, and accas multiply the bookmaker's margin, so read the numbers as a record of what happened, not a forecast.
+Settings (`config.py`): `ACCA_DEFAULT_STAKE = 1.0`, `ACCA_STREAK_MIN = 2`.
+
+## ⭐ Bet of the Day
+
+The model's **most confident single selection** among markets with **real bookmaker odds between 1.40 and 1.90**, shown as a full single-match card (Over/Under 2.5, BTTS and 1X2 with real vs fair odds,
+value, expected goals, top scores) plus the next five best, one per match.
+- **Confident** = highest model probability; ties go to the better value, then the earlier kickoff. The market is whichever of Over/Under 2.5, BTTS or 1X2 has the best selection. Only real prices count, never a model-made price.
+- **Dates:** Prev / Next / Today / calendar. Today and the next ~2 days use the saved picks (live odds). **Past days are rebuilt from `data/odds_log.csv`**: the last price logged before each kickoff plus the model's expected goals at that moment, graded
+  WON / LOST against the final score. Bzzoiro does not provide pre-match odds for finished matches, so a day can only be rebuilt if the app was running and refreshing before its kickoffs. Dates beyond the loaded fixtures have no odds yet, so they stay empty.
+- **Logging:** the odds log used to hold Over/Under prices only; it now also records BTTS and 1X2 prices (the file is upgraded in place, no rows lost). Days logged before this update can only offer Over/Under selections.
+- Picking the most probable selection is not the same as picking value: the card shows the value (EV) next to the probability, and a pick can have a slightly negative EV. In backtests the model was not better than the bookmaker's own probabilities.
+- Settings (`config.py`): `BOTD_MIN_ODDS = 1.40`, `BOTD_MAX_ODDS = 1.90`, `BOTD_MIN_PROB = 0.0` (optional floor on the probability).
+
 ## Look and feel
 
 The dashboard uses a navy / green / gold theme inspired by modern football-stats sites: deep navy background, slightly lighter navy cards, a green accent (`#10b880`) for

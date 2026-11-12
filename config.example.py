@@ -101,3 +101,12 @@ XG_CACHE_CSV   = "data/xg_cache.csv"
 # (otherwise their fixtures would be skipped). `python add_leagues.py --preset c` adds the UEFA Nations League and fills this list in.
 NATIONAL_TEAM_LEAGUES = []
 # NATIONAL_MIN_APPS = 4
+
+# ============ BET OF THE DAY (optional) ============
+# BOTD_MIN_ODDS = 1.40   # real odds range a selection must be in
+# BOTD_MAX_ODDS = 1.90
+# BOTD_MIN_PROB = 0.0    # optional floor on the model probability (e.g. 0.55)
+
+# ============ ACCA TRACKING (optional) ============
+# ACCA_DEFAULT_STAKE = 1.0   # units staked on every tracked acca (editable per acca)
+# ACCA_STREAK_MIN    = 2     # a streak is this many identical results in a row (minimum 2)

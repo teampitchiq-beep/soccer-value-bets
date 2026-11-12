@@ -153,6 +153,83 @@
         .tnext { display: flex; justify-content: space-between; gap: 8px; align-items: center; background: var(--bg-3); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; font-size: .84rem; }
         .tnext .k { color: var(--muted); font-size: .68rem; letter-spacing: .05em; }
         .tnext .ko { color: var(--gold); font-weight: 800; }
+        /* Acca tracking */
+        .trk-add { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 12px; background: var(--card); border: 1px dashed var(--gold); border-radius: 12px; padding: 12px; }
+        .trk-add label { color: var(--muted); font-size: .8rem; display: flex; gap: 6px; align-items: center; }
+        .trk-add input { width: 74px; }
+        .trk-add .msg { flex: 1 1 100%; font-size: .85rem; }
+        .trk-add .msg.ok { color: var(--win); } .trk-add .msg.bad { color: var(--lose); }
+        .trk-card { background: linear-gradient(180deg, var(--card-2), var(--card)); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 12px; }
+        .trk-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .trk-head h3 { margin: 0; font-family: var(--font-head); text-transform: uppercase; letter-spacing: .04em; font-size: 1.35rem; font-weight: 700; }
+        .trk-head .cnt { color: var(--muted); font-size: .8rem; }
+        .trk-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+        @media (min-width: 640px) { .trk-kpis { grid-template-columns: repeat(4, 1fr); } }
+        .trk-kpi { background: var(--bg-3); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0; }
+        .trk-kpi .k { color: var(--muted); font-size: .68rem; letter-spacing: .06em; text-transform: uppercase; }
+        .trk-kpi .v { font-family: var(--font-num); font-weight: 700; font-size: 1.45rem; margin-top: 2px; }
+        .trk-kpi .s { color: var(--muted); font-size: .72rem; margin-top: 1px; }
+        .trk-kpi.big .v { font-size: 1.8rem; }
+        .trk-pos { color: var(--win); } .trk-neg { color: var(--lose); } .trk-mut { color: var(--muted); }
+        .trk-mini { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px 14px; }
+        @media (min-width: 640px) { .trk-mini { grid-template-columns: repeat(4, 1fr); } }
+        .trk-mini div { display: flex; justify-content: space-between; gap: 8px; font-size: .82rem; border-bottom: 1px solid var(--line); padding: 4px 0; }
+        .trk-mini span { color: var(--muted); } .trk-mini b { font-family: var(--font-num); }
+        .trk-bar { display: flex; height: 10px; border-radius: 6px; overflow: hidden; background: var(--bg-3); }
+        .trk-bar i { display: block; height: 100%; }
+        .trk-chartbox { background: var(--bg-3); border: 1px solid var(--line); border-radius: 12px; padding: 8px; }
+        .trk-chartbox svg { width: 100%; height: auto; display: block; }
+        .trk-chartbox .t { fill: var(--muted); font-size: 11px; font-family: var(--font-num); }
+        .trk-empty { color: var(--muted); text-align: center; padding: 26px 10px; font-size: .88rem; line-height: 1.5; }
+        .trk-strip { display: flex; gap: 3px; flex-wrap: wrap; }
+        .trk-strip i { width: 16px; height: 16px; border-radius: 4px; display: block; font-style: normal; font-size: .6rem; line-height: 16px; text-align: center; font-weight: 800; color: #04130e; }
+        .trk-strip i.W { background: var(--win); } .trk-strip i.L { background: var(--lose); color: #fff; }
+        .trk-row { background: var(--bg-3); border: 1px solid var(--line); border-radius: 12px; margin-bottom: 7px; cursor: pointer; }
+        .trk-row .main { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 9px 12px; }
+        .trk-row .ti { font-weight: 700; font-size: .9rem; } .trk-row .su { color: var(--muted); font-size: .74rem; margin-top: 1px; }
+        .trk-row .od { font-family: var(--font-num); font-weight: 700; color: var(--gold); text-align: right; }
+        .trk-row .od small { display: block; color: var(--muted); font-weight: 500; font-size: .68rem; }
+        .trk-badge { font-weight: 800; font-size: .72rem; border-radius: 999px; padding: 3px 10px; text-align: center; min-width: 74px; }
+        .trk-badge.won { background: rgba(16,184,128,.18); color: var(--win); } .trk-badge.lost { background: rgba(244,63,94,.18); color: var(--lose); }
+        .trk-badge.pending { background: rgba(226,190,52,.15); color: var(--gold); } .trk-badge.void { background: var(--line); color: var(--muted); }
+        .trk-badge small { display: block; font-family: var(--font-num); font-weight: 700; font-size: .72rem; }
+        .trk-detail { display: none; padding: 4px 12px 12px; border-top: 1px solid var(--line); cursor: default; }
+        .trk-row.open .trk-detail { display: block; }
+        .trk-leg { display: flex; justify-content: space-between; gap: 10px; padding: 6px 0; font-size: .84rem; border-bottom: 1px solid var(--line); }
+        .trk-leg .l { min-width: 0; } .trk-leg .l small { color: var(--muted); display: block; font-size: .72rem; }
+        .trk-leg .r { font-family: var(--font-num); font-weight: 700; text-align: right; white-space: nowrap; }
+        .trk-act { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 10px; }
+        .trk-act input { width: 80px; }
+        .trk-act button { padding: 7px 12px; font-size: .8rem; border-radius: 8px; cursor: pointer; }
+        /* Bet of the Day */
+        .botd-card { padding: 16px; display: flex; flex-direction: column; gap: 10px; border-color: var(--gold) !important; box-shadow: 0 0 0 1px rgba(226,190,52,.25), 0 10px 30px rgba(0,0,0,.35); }
+        .botd-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+        .botd-badge { background: var(--gold); color: #1a1405; font-family: var(--font-head); font-weight: 700; letter-spacing: .05em; font-size: 1rem; padding: 3px 12px; border-radius: 999px; text-transform: uppercase; }
+        .botd-status { font-weight: 800; font-size: .85rem; }
+        .botd-status.won { color: var(--win); } .botd-status.lost { color: var(--lose); } .botd-status.pending { color: var(--muted); }
+        .botd-match { font-size: 1.3rem; font-weight: 800; }
+        .botd-match span { color: var(--muted); font-weight: 500; margin: 0 4px; }
+        .botd-meta { color: var(--muted); font-size: .8rem; }
+        .botd-sel { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; }
+        .botd-sel .lbl { font-size: 1.35rem; font-weight: 800; }
+        .botd-sel .od { font-family: var(--font-num); font-weight: 700; font-size: 1.5rem; color: var(--gold); }
+        .botd-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+        .botd-chips span { background: #1b2940; border-radius: 10px; padding: 5px 11px; font-size: .8rem; color: var(--muted); }
+        .botd-chips span b { color: var(--text); font-family: var(--font-num); margin-left: 4px; }
+        .botd-chips span b.pos { color: var(--win); } .botd-chips span b.neg { color: var(--lose); }
+        .botd-sec { font-family: var(--font-head); text-transform: uppercase; letter-spacing: .04em; font-size: 1.05rem; font-weight: 700; margin: 10px 0 2px; }
+        .botd-row { display: flex; justify-content: space-between; gap: 10px; padding: 7px 10px; border-radius: 8px; font-size: .88rem; }
+        .botd-row .l { color: var(--muted); }
+        .botd-row .v { font-family: var(--font-num); font-weight: 700; text-align: right; }
+        .botd-row.picked { background: rgba(226,190,52,.12); box-shadow: inset 3px 0 0 var(--gold); }
+        .botd-row.picked .l { color: var(--text); font-weight: 700; }
+        .botd-run { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 9px 12px; margin-bottom: 7px; }
+        .botd-run .n { color: var(--gold); font-weight: 800; text-align: center; }
+        .botd-run .t { font-weight: 700; font-size: .92rem; }
+        .botd-run .s { color: var(--muted); font-size: .74rem; }
+        .botd-run .r { text-align: right; font-family: var(--font-num); font-weight: 700; font-size: .9rem; }
+        .botd-run .r small { display: block; color: var(--muted); font-weight: 500; font-size: .7rem; }
+        .botd-empty { background: var(--card); border: 1px dashed var(--line-2); border-radius: var(--radius); padding: 18px; color: var(--muted); text-align: center; line-height: 1.5; }
         /* Top 10 bets */
         .trank { display: grid; grid-template-columns: 34px minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; background: var(--card); border: 1px solid var(--line);
                  border-radius: var(--radius); padding: 10px 12px; margin-bottom: 8px; cursor: pointer; }
@@ -209,9 +286,11 @@
         <h3>Quick Links</h3>
         <button class="dl" type="button" onclick="goTab('matches')">📅 All Matches</button>
         <button class="dl" type="button" onclick="goTab('x12')">🏆 1X2</button>
+        <button class="dl" type="button" onclick="goTab('botd')">⭐ Bet of the Day</button>
         <button class="dl" type="button" onclick="goTab('trends')">📈 Trends</button>
         <button class="dl" type="button" onclick="goTab('shots')">📊 Shots</button>
         <button class="dl" type="button" onclick="goTab('acca')">🎯 Acca</button>
+        <button class="dl" type="button" onclick="goTab('acca'); showAccaView('track')">📒 Acca Tracking</button>
         <button class="dl" type="button" onclick="goTab('btts')">⚽ BTTS</button>
         <button class="dl" type="button" onclick="goTab('results')">📋 Results</button>
         <button class="dl" type="button" onclick="goTab('single')">🔍 Single Match</button>
@@ -228,6 +307,9 @@
             </button>
             <button class="tab" data-tab="x12" onclick="switchTab('x12', this)">
                 🏆 1X2 <span class="badge-count">{{ x12_rows|length }}</span>
+            </button>
+            <button class="tab" data-tab="botd" onclick="switchTab('botd', this)">
+                ⭐ Bet of the Day
             </button>
             <button class="tab" data-tab="trends" onclick="switchTab('trends', this)">
                 📈 Trends
@@ -507,6 +589,28 @@
             {% endif %}
         </section>
 
+        <!-- ================= BET OF THE DAY ================= -->
+        <section id="botd" class="panel">
+            <div class="pill-title"><span>⭐ Bet of the Day</span></div>
+            <div class="hint" style="margin:-6px 0 12px;">
+                The model's <b>most confident single selection</b> (highest probability) among markets with real bookmaker odds between
+                <b id="botdLo">1.40</b> and <b id="botdHi">1.90</b>: Over/Under 2.5, BTTS and 1X2. Past days are rebuilt from the odds the app logged before kickoff.
+            </div>
+            <div class="seg" style="align-items:center;">
+                <button type="button" onclick="shiftBotdDate(-1)">‹ Prev</button>
+                <input type="date" id="botdPick" class="dinput" onchange="loadBotd()">
+                <button type="button" onclick="shiftBotdDate(1)">Next ›</button>
+                <button type="button" onclick="setBotdDate(isoPlus(0))">Today</button>
+            </div>
+            <div class="date-headline" id="botdHeadline"></div>
+            <div class="hint" id="botdMeta" style="text-align:center;"></div>
+            <div id="botdPickBox"></div>
+            <div id="botdRunnersWrap" style="display:none;">
+                <div class="sec-bar" style="margin-top:16px;">Next best · one per match</div>
+                <div id="botdRunners" style="margin-top:8px;"></div>
+            </div>
+        </section>
+
         <!-- ================= TRENDS ================= -->
         <section id="trends" class="panel">
             <div class="pill-title"><span>Trends · Last 10 Matches</span></div>
@@ -609,6 +713,12 @@
 
         <!-- ================= ACCA ================= -->
         <section id="acca" class="panel">
+            <div class="seg" id="accaViews" style="margin-bottom:14px;">
+                <button type="button" class="active" data-view="build" onclick="showAccaView('build')">🛠 Build</button>
+                <button type="button" data-view="track" onclick="showAccaView('track')">📒 Tracking
+                    <span class="dc" id="accaPendingBadge" {% if not acca_pending %}style="display:none;"{% endif %}>{{ acca_pending }}</span></button>
+            </div>
+            <div id="accaBuild">
             <div class="pill-title"><span>Acca Builder</span></div>
             <div class="hint" style="margin:-6px 0 12px;">
                 Pick a market. You get the <b>most probable</b> combination of {{ acca_cfg.min_legs }} or {{ acca_cfg.max_legs }} selections whose combined odds
@@ -658,6 +768,18 @@
                 <div class="empty">No upcoming fixtures are loaded yet.<br>
                     <span class="hint">Tap ↻ Refresh once the API quota is available, then come back here.</span></div>
             {% endif %}
+            </div>
+
+            <div id="accaTrack" style="display:none;">
+                <div class="pill-title"><span>Acca Tracking</span></div>
+                <div class="hint" style="margin:-6px 0 12px;">
+                    Accas you track from the builder, one section per market. Each acca stakes <b id="trkDefStake">1</b> unit by default (change it per acca).
+                    They settle by themselves from your finished-match results: <b>lost</b> as soon as one leg loses, <b>won</b> when every leg has won.
+                    ROI = profit ÷ units staked. A <b>streak</b> is <b id="trkStreakMin">2</b> or more identical results in a row, counted in time order.
+                </div>
+                <div class="shots-ctl" style="margin-top:0;"><button type="button" class="btn-dark" onclick="loadAccaTracking()">↻ Settle now</button></div>
+                <div id="trkSections"></div>
+            </div>
         </section>
 
         <!-- ================= RESULTS ================= -->
@@ -975,6 +1097,7 @@
             document.getElementById(name).classList.add('active');
             if (name === 'shots' && !shotsReady) { shotsReady = true; setShotsDate(isoPlus(0)); }
             if (name === 'trends' && !trendsReady) { trendsReady = true; setTrendsDate(isoPlus(0)); }
+            if (name === 'botd' && !botdReady) { botdReady = true; setBotdDate(isoPlus(0)); }
         }
 
         function goTab(name) {
@@ -1034,20 +1157,23 @@
 
             const counts = {};
             rows.forEach(r => { const d = r.dataset.matchDate; counts[d] = (counts[d] || 0) + 1; });
+            // Today and Tomorrow always get a chip, with a 0 when there are no fixtures that day
+            [isoPlus(0), isoPlus(1)].forEach(d => { if (!(d in counts)) counts[d] = 0; });
             const dates = Object.keys(counts).sort();
 
             const allBtn = bar.querySelector('.date-btn[data-date="all"]');
             dates.forEach(d => {
                 const btn = document.createElement('button');
-                btn.className = 'date-btn';
+                btn.className = 'date-btn' + (counts[d] === 0 ? ' empty' : '');
                 btn.dataset.date = d;
                 btn.innerHTML = shortLabel(d) + ' <span class="dc">' + counts[d] + '</span>';
                 btn.onclick = function () { filterDate(key, d, this); };
                 bar.insertBefore(btn, allBtn);
             });
 
-            // start on the earliest day with matches (normally Today)
-            filterDate(key, dates[0], bar.querySelector('.date-btn[data-date="' + dates[0] + '"]'));
+            // start on the earliest day that has matches (normally Today)
+            const first = dates.find(d => counts[d] > 0);
+            filterDate(key, first, bar.querySelector('.date-btn[data-date="' + first + '"]'));
         }
 
         function filterDate(key, date, el) {
@@ -1245,7 +1371,23 @@
                      ' legs only a ' + pct(c.prob) + ' chance together (it assumes the legs are independent). In backtests this model was not better than ' +
                      'the bookmaker&#39;s own probabilities, so a bigger combined price is not a better bet. This is a research tool, not betting advice. ' +
                      'Only stake what you can afford to lose.</div>';
+                h += '<div class="trk-add"><label>Units <input type="number" id="trkUnits" inputmode="decimal" min="0.1" step="0.5" value="' + (window.TRK_DEFAULT_STAKE || 1) + '"></label>' +
+                     '<button class="primary" type="button" id="trkAddBtn" style="width:auto;padding:10px 16px;">➕ Track this acca</button>' +
+                     '<div class="msg" id="trkAddMsg" aria-live="polite">Adds it to <b>Acca Tracking</b> so it is settled and counted in your ROI and streaks.</div></div>';
                 out.innerHTML = h;
+                const addBtn = document.getElementById('trkAddBtn'), addMsg = document.getElementById('trkAddMsg');
+                addBtn.addEventListener('click', async () => {
+                    addBtn.disabled = true;
+                    try {
+                        const r = await fetch('/api/acca/track', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                            body: JSON.stringify({acca: d, stake: document.getElementById('trkUnits').value})});
+                        const j = await r.json();
+                        addMsg.className = 'msg ' + (j.ok ? 'ok' : 'bad');
+                        addMsg.textContent = (j.ok ? '✅ ' : '⚠️ ') + j.message;
+                        if (j.ok) { accaTrackedChanged(j.pending); addBtn.textContent = '✅ Tracked'; }
+                        else addBtn.disabled = false;
+                    } catch (err) { addMsg.className = 'msg bad'; addMsg.textContent = 'Could not save: ' + err; addBtn.disabled = false; }
+                });
                 const stake = document.getElementById('accaStake'), ret = document.getElementById('accaRet');
                 const upd = () => { const s = parseFloat(stake.value) || 0; ret.textContent = (s * c.odds).toFixed(2) + ' (profit ' + (s * c.odds - s).toFixed(2) + ')'; };
                 stake.addEventListener('input', upd); upd();
@@ -1515,6 +1657,244 @@
                 }
             } catch (e) {
                 trendsData = null; renderTrends(); renderTop([]); cov.textContent = 'Could not load trends: ' + e;
+            }
+        }
+
+        // ---- Acca tracking ---------------------------------------------------------------------
+        window.TRK_DEFAULT_STAKE = 1;
+        let trkLoaded = false, trkData = null;
+        const trkOpen = new Set(), trkShowAll = new Set();
+        const u2 = v => (v >= 0 ? '+' : '') + Number(v).toFixed(2) + 'u';
+
+        function showAccaView(name) {
+            document.getElementById('accaBuild').style.display = name === 'build' ? '' : 'none';
+            document.getElementById('accaTrack').style.display = name === 'track' ? '' : 'none';
+            document.querySelectorAll('#accaViews button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+            if (name === 'track') loadAccaTracking();
+        }
+        function setAccaBadge(n) {
+            const b = document.getElementById('accaPendingBadge');
+            if (!b) return;
+            b.textContent = n; b.style.display = n > 0 ? '' : 'none';
+        }
+        function accaTrackedChanged(pending) { trkLoaded = false; if (pending != null) setAccaBadge(pending); }
+
+        function trkChart(series) {
+            if (series.length < 2) return '<div class="trk-empty">The profit chart appears after your first settled acca.</div>';
+            // drawn at the container's real width (so axis text stays readable on a phone), then scaled by CSS only slightly
+            const box = document.getElementById('trkSections');
+            const W = Math.max(300, Math.min(900, (box && box.clientWidth ? box.clientWidth : 640) - 50));
+            const H = Math.max(190, Math.round(W * 0.34)), pl = 44, pr = 14, pt = 14, pb = 26, n = series.length - 1;
+            const ys = series.map(p => p.cum);
+            let lo = Math.min(0, ...ys), hi = Math.max(0, ...ys);
+            if (hi - lo < 1) { hi += 0.5; lo -= 0.5; }
+            const pad = (hi - lo) * 0.12; lo -= pad; hi += pad;
+            const x = i => pl + (i / n) * (W - pl - pr), y = v => pt + (hi - v) / (hi - lo) * (H - pt - pb);
+            const last = ys[ys.length - 1], col = last >= 0 ? 'var(--win)' : 'var(--lose)';
+            const line = series.map((p, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(p.cum).toFixed(1)).join(' ');
+            const area = 'M' + x(0).toFixed(1) + ',' + y(0).toFixed(1) + ' ' + series.map((p, i) => 'L' + x(i).toFixed(1) + ',' + y(p.cum).toFixed(1)).join(' ') +
+                         ' L' + x(n).toFixed(1) + ',' + y(0).toFixed(1) + ' Z';
+            const gid = 'g' + Math.random().toString(36).slice(2, 8);
+            const tick = v => '<text class="t" x="' + (pl - 6) + '" y="' + (y(v) + 3).toFixed(1) + '" text-anchor="end">' + (v >= 0 ? '+' : '') + v.toFixed(1) + '</text>';
+            let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Cumulative profit in units">' +
+                '<defs><linearGradient id="' + gid + '" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="' + col + '" stop-opacity=".35"/><stop offset="100%" stop-color="' + col + '" stop-opacity="0"/></linearGradient></defs>' +
+                '<line x1="' + pl + '" x2="' + (W - pr) + '" y1="' + y(0).toFixed(1) + '" y2="' + y(0).toFixed(1) + '" stroke="var(--gold)" stroke-dasharray="5 4" stroke-width="1.5"/>' +
+                tick(0) + tick(Math.max(...ys, 0.001)) + (Math.min(...ys) < 0 ? tick(Math.min(...ys)) : '') +
+                '<path d="' + area + '" fill="url(#' + gid + ')"/><path d="' + line + '" fill="none" stroke="' + col + '" stroke-width="2.5" stroke-linejoin="round"/>';
+            series.forEach((p, i) => {
+                if (!i) return;
+                const c = p.result === 'won' ? 'var(--win)' : 'var(--lose)';
+                svg += '<circle cx="' + x(i).toFixed(1) + '" cy="' + y(p.cum).toFixed(1) + '" r="4" fill="' + c + '" stroke="var(--bg-3)" stroke-width="1.5"><title>#' + i + ' · ' +
+                    (p.result === 'won' ? 'WON' : 'LOST') + ' · odds ' + Number(p.odds).toFixed(2) + ' · ' + u2(p.profit) + ' (running ' + u2(p.cum) + ')</title></circle>';
+            });
+            svg += '<text class="t" x="' + pl + '" y="' + (H - 8) + '">start</text><text class="t" x="' + (W - pr) + '" y="' + (H - 8) + '" text-anchor="end">acca #' + n + '</text></svg>';
+            return svg;
+        }
+
+        function trkWhen(iso) {
+            try { return new Date(iso).toLocaleString('en-GB', {timeZone: 'Africa/Nairobi', weekday: 'short', day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'}); }
+            catch (e) { return ''; }
+        }
+        const trkIcon = r => r === 'won' ? '✅' : (r === 'lost' ? '❌' : '⏳');
+
+        function trkRow(a) {
+            const legsTxt = a.legs.map(l => l.label).join(' + ');
+            const profit = a.status === 'won' || a.status === 'lost' ? '<small>' + u2(a.profit) + '</small>' : '';
+            const open = trkOpen.has(a.id);
+            let det = a.legs.map((l, i) =>
+                '<div class="trk-leg"><div class="l">' + escS(l.home) + ' vs ' + escS(l.away) + '<small>' + escS(l.league) + ' · ' + escS(trkWhen(l.kickoff_utc)) + ' EAT · ' + escS(l.label) + '</small></div>' +
+                '<div class="r">' + trkIcon(a.leg_results[i]) + ' @ ' + Number(l.odds).toFixed(2) + '</div></div>').join('');
+            det += '<div class="trk-leg"><div class="l">Model chance all legs win<small>at the time you tracked it</small></div><div class="r">' + (a.prob * 100).toFixed(1) + '%</div></div>' +
+                '<div class="trk-act"><label class="hint">Stake (units) <input type="number" min="0.1" step="0.5" value="' + a.stake + '" data-stake="' + a.id + '"></label>' +
+                '<button type="button" class="btn-dark" data-act="stake" data-id="' + a.id + '">Save stake</button>' +
+                '<button type="button" class="btn-dark" data-act="void" data-id="' + a.id + '" data-void="' + (a.void ? 0 : 1) + '">' + (a.void ? 'Un-void' : 'Void (postponed)') + '</button>' +
+                '<button type="button" class="btn-dark" data-act="del" data-id="' + a.id + '" style="color:var(--lose);">Delete</button></div>';
+            return '<div class="trk-row' + (open ? ' open' : '') + '" data-row="' + a.id + '"><div class="main" data-toggle="' + a.id + '">' +
+                '<div><div class="ti">' + a.legs.length + '-leg acca · ' + escS(legsTxt) + '</div><div class="su">' + escS(trkWhen(a.legs[a.legs.length - 1].kickoff_utc)) + ' EAT · stake ' + a.stake + 'u</div></div>' +
+                '<div class="od">' + Number(a.odds).toFixed(2) + '<small>odds</small></div>' +
+                '<div class="trk-badge ' + a.status + '">' + a.status.toUpperCase() + profit + '</div></div><div class="trk-detail">' + det + '</div></div>';
+        }
+
+        function trkSection(s) {
+            const st = s.stats, sk = st.streaks;
+            const roiCls = st.roi == null ? 'trk-mut' : (st.roi >= 0 ? 'trk-pos' : 'trk-neg');
+            const profCls = st.profit >= 0 ? 'trk-pos' : 'trk-neg';
+            const cur = sk.current.type ? (sk.current.type === 'W' ? 'W' : 'L') + sk.current.length : '—';
+            const tot = Math.max(1, st.settled + st.pending);
+            let h = '<div class="trk-card" id="trk-' + s.market + '"><div class="trk-head"><h3>' + s.icon + ' ' + escS(s.title) + '</h3>' +
+                '<span class="cnt">' + st.tracked + ' tracked · ' + st.settled + ' settled · ' + st.pending + ' pending' + (st.void ? ' · ' + st.void + ' void' : '') + '</span></div>';
+            h += '<div class="trk-kpis">' +
+                '<div class="trk-kpi big"><div class="k">ROI</div><div class="v ' + roiCls + '">' + (st.roi == null ? '—' : (st.roi >= 0 ? '+' : '') + st.roi.toFixed(1) + '%') + '</div><div class="s">on ' + st.staked + ' units staked</div></div>' +
+                '<div class="trk-kpi big"><div class="k">Win rate</div><div class="v">' + (st.win_rate == null ? '—' : st.win_rate.toFixed(1) + '%') + '</div><div class="s">' + st.won + ' won · ' + st.lost + ' lost</div></div>' +
+                '<div class="trk-kpi big"><div class="k">Profit</div><div class="v ' + profCls + '">' + (st.settled ? u2(st.profit) : '—') + '</div><div class="s">units, flat stakes</div></div>' +
+                '<div class="trk-kpi big"><div class="k">Streaks</div><div class="v"><span class="trk-pos">' + sk.win_streaks + 'W</span> <span class="trk-neg">' + sk.loss_streaks + 'L</span></div><div class="s">' + sk.min_length + '+ in a row</div></div></div>';
+            h += '<div class="trk-bar" title="won / lost / pending"><i style="width:' + (100 * st.won / tot) + '%;background:var(--win)"></i><i style="width:' + (100 * st.lost / tot) + '%;background:var(--lose)"></i><i style="width:' + (100 * st.pending / tot) + '%;background:var(--gold);opacity:.55"></i></div>';
+            h += '<div class="trk-mini">' +
+                '<div><span>Winning streaks</span><b class="trk-pos">' + sk.win_streaks + '</b></div><div><span>Losing streaks</span><b class="trk-neg">' + sk.loss_streaks + '</b></div>' +
+                '<div><span>Longest win run</span><b>' + sk.longest_win + '</b></div><div><span>Longest losing run</span><b>' + sk.longest_loss + '</b></div>' +
+                '<div><span>Current run</span><b class="' + (sk.current.type === 'W' ? 'trk-pos' : (sk.current.type === 'L' ? 'trk-neg' : '')) + '">' + cur + '</b></div>' +
+                '<div><span>Average odds</span><b>' + (st.avg_odds == null ? '—' : st.avg_odds.toFixed(2)) + '</b></div>' +
+                '<div><span>Model win rate</span><b>' + (st.model_win_rate == null ? '—' : st.model_win_rate.toFixed(1) + '%') + '</b></div>' +
+                '<div><span>Max drawdown</span><b>' + (st.settled ? '-' + st.max_drawdown.toFixed(2) + 'u' : '—') + '</b></div>' +
+                '<div><span>Units at risk</span><b>' + st.pending_units + 'u</b></div></div>';
+            h += '<div class="trk-chartbox">' + trkChart(st.series) + '</div>';
+            if (st.strip.length) h += '<div><div class="hint" style="margin-bottom:5px;">Last ' + st.strip.length + ' settled, oldest first</div><div class="trk-strip">' + st.strip.map(r => '<i class="' + r + '">' + r + '</i>').join('') + '</div></div>';
+            if (!s.accas.length) {
+                h += '<div class="trk-empty">No ' + escS(s.title) + ' accas tracked yet.<br>Build one in the <b>Build</b> view and tap <b>➕ Track this acca</b>.</div>';
+            } else {
+                const all = trkShowAll.has(s.market), shown = all ? s.accas : s.accas.slice(0, 6);
+                h += '<div>' + shown.map(trkRow).join('') + '</div>';
+                if (s.accas.length > 6) h += '<button type="button" class="btn-dark" data-act="more" data-market="' + s.market + '">' + (all ? 'Show fewer' : 'Show all ' + s.accas.length) + '</button>';
+            }
+            return h + '</div>';
+        }
+
+        function renderTracking() {
+            if (!trkData) return;
+            window.TRK_DEFAULT_STAKE = trkData.default_stake;
+            document.getElementById('trkDefStake').textContent = trkData.default_stake;
+            document.getElementById('trkStreakMin').textContent = trkData.streak_min;
+            document.getElementById('trkSections').innerHTML = trkData.sections.map(trkSection).join('');
+            setAccaBadge(trkData.pending_total);
+        }
+
+        async function loadAccaTracking() {
+            const box = document.getElementById('trkSections');
+            if (!trkData) box.innerHTML = '<div class="hint" style="padding:14px;text-align:center;">Loading…</div>';
+            try {
+                trkData = await (await fetch('/api/acca/track')).json();
+                trkLoaded = true; renderTracking();
+            } catch (e) { box.innerHTML = '<div class="trk-empty">Could not load tracking: ' + escS(String(e)) + '</div>'; }
+        }
+
+        let trkResize;
+        window.addEventListener('resize', () => { clearTimeout(trkResize); trkResize = setTimeout(() => { if (trkData && document.getElementById('accaTrack').style.display !== 'none') renderTracking(); }, 200); });
+
+        document.addEventListener('click', async ev => {
+            const sec = ev.target.closest('#trkSections');
+            if (!sec) return;
+            const tog = ev.target.closest('[data-toggle]');
+            if (tog && !ev.target.closest('button,input')) {
+                const id = +tog.dataset.toggle; trkOpen.has(id) ? trkOpen.delete(id) : trkOpen.add(id);
+                tog.parentElement.classList.toggle('open'); return;
+            }
+            const btn = ev.target.closest('button[data-act]');
+            if (!btn) return;
+            const act = btn.dataset.act, id = btn.dataset.id;
+            if (act === 'more') { trkShowAll.has(btn.dataset.market) ? trkShowAll.delete(btn.dataset.market) : trkShowAll.add(btn.dataset.market); renderTracking(); return; }
+            let res;
+            if (act === 'del') { if (!confirm('Remove this acca from tracking? This cannot be undone.')) return; res = await fetch('/api/acca/track/' + id, {method: 'DELETE'}); }
+            else if (act === 'void') res = await fetch('/api/acca/track/' + id + '/void', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({void: btn.dataset.void === '1'})});
+            else if (act === 'stake') {
+                const inp = sec.querySelector('input[data-stake="' + id + '"]');
+                res = await fetch('/api/acca/track/' + id + '/stake', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({stake: inp.value})});
+            }
+            if (res) { const j = await res.json(); if (!j.ok) alert(j.message); await loadAccaTracking(); }
+        });
+
+        // ---- Bet of the Day --------------------------------------------------------------------
+        let botdReady = false;
+        function setBotdDate(iso) { document.getElementById('botdPick').value = iso; loadBotd(); }
+        function shiftBotdDate(delta) {
+            const el = document.getElementById('botdPick');
+            const d = new Date((el.value || isoPlus(0)) + 'T12:00:00Z');
+            d.setUTCDate(d.getUTCDate() + delta);
+            setBotdDate(d.toISOString().slice(0, 10));
+        }
+        const pct1 = v => (v == null ? '—' : (v * 100).toFixed(1) + '%');
+        const odd2 = v => (v == null ? 'no odds' : Number(v).toFixed(2));
+
+        function botdRow(label, prob, odds, picked) {
+            const fair = prob ? (1 / prob).toFixed(2) : '—';
+            return '<div class="botd-row' + (picked ? ' picked' : '') + '"><span class="l">' + escS(label) + '</span>' +
+                '<span class="v">' + pct1(prob) + ' · real ' + odd2(odds) + ' · fair ' + fair + '</span></div>';
+        }
+
+        function botdStatus(p) {
+            if (p.result === 'won') return '<span class="botd-status won">✅ WON · ' + escS(p.score) + '</span>';
+            if (p.result === 'lost') return '<span class="botd-status lost">❌ LOST · ' + escS(p.score) + '</span>';
+            const started = new Date(p.kickoff_utc) <= new Date();
+            return '<span class="botd-status pending">' + (started ? '⏳ Played or in play · result not in yet' : '⏳ Kickoff ' + escS(p.kickoff) + ' EAT') + '</span>';
+        }
+
+        function botdCard(p) {
+            const b = p.breakdown, M = p.market, S = p.side;
+            const ev = p.ev == null ? '—' : (p.ev >= 0 ? '+' : '') + (p.ev * 100).toFixed(1) + '%';
+            const evCls = p.ev == null ? '' : (p.ev >= 0 ? 'pos' : 'neg');
+            return '<div class="card botd-card">' +
+                '<div class="botd-top"><span class="botd-badge">⭐ Bet of the Day</span>' + botdStatus(p) + '</div>' +
+                '<div><div class="botd-match">' + escS(p.home) + '<span>vs</span>' + escS(p.away) + '</div>' +
+                '<div class="botd-meta">' + escS(p.league) + ' · ' + escS(p.kickoff) + ' EAT' + (p.source === 'log' ? ' · price from the last snapshot logged before kickoff' : '') + '</div></div>' +
+                '<div class="botd-sel"><span class="lbl">' + escS(p.label) + '</span><span class="od">@ ' + Number(p.odds).toFixed(2) + '</span></div>' +
+                '<div class="botd-chips"><span>Model<b>' + pct1(p.prob) + '</b></span><span>Fair odds<b>' + p.fair_odds.toFixed(2) + '</b></span>' +
+                '<span>Value (EV)<b class="' + evCls + '">' + ev + '</b></span><span>Confidence<b>' + escS(p.tier) + '</b></span></div>' +
+                '<div class="botd-sec">📈 Over / Under 2.5</div>' +
+                botdRow('Over 2.5', b.ou.p_over, b.ou.odds_over, M === 'ou25' && S === 'Over') +
+                botdRow('Under 2.5', b.ou.p_under, b.ou.odds_under, M === 'ou25' && S === 'Under') +
+                '<div class="botd-sec">⚽ Both teams to score</div>' +
+                botdRow('BTTS Yes', b.btts.p_yes, b.btts.odds_yes, M === 'btts' && S === 'Yes') +
+                botdRow('BTTS No', b.btts.p_no, b.btts.odds_no, M === 'btts' && S === 'No') +
+                '<div class="botd-sec">🏆 Match result · 1X2</div>' +
+                botdRow(p.home + ' win', b.x12.p_home, b.x12.odds_home, M === '1x2' && S === 'Home') +
+                botdRow('Draw', b.x12.p_draw, b.x12.odds_draw, M === '1x2' && S === 'Draw') +
+                botdRow(p.away + ' win', b.x12.p_away, b.x12.odds_away, M === '1x2' && S === 'Away') +
+                '<div class="botd-row"><span class="l">Expected goals</span><span class="v">' + b.lh + ' + ' + b.la + '</span></div>' +
+                '<div class="botd-row"><span class="l">Top 2 scores</span><span class="v">' + b.top_2_scores.map(s => escS(s.score) + ' ' + s.prob + '%').join(' · ') + '</span></div>' +
+                '<div class="hint">Most confident = highest model probability, not best value: compare the model with the price (EV). In backtests this model was not better than the bookmaker\'s own probabilities, so treat the pick as a lead, not a certainty.</div>' +
+                '</div>';
+        }
+
+        function botdRunner(r, i) {
+            const ev = r.ev == null ? '' : (r.ev >= 0 ? '+' : '') + (r.ev * 100).toFixed(1) + '% EV';
+            const res = r.result === 'won' ? ' ✅' : (r.result === 'lost' ? ' ❌' : '');
+            return '<div class="botd-run"><div class="n">' + (i + 2) + '</div>' +
+                '<div><div class="t">' + escS(r.label) + res + '</div><div class="s">' + escS(r.home) + ' vs ' + escS(r.away) + ' · ' + escS(r.market_label) + ' · ' + escS(r.kickoff) + '</div></div>' +
+                '<div class="r">' + pct1(r.prob) + '<small>@ ' + Number(r.odds).toFixed(2) + ' · ' + ev + '</small></div></div>';
+        }
+
+        async function loadBotd() {
+            const iso = document.getElementById('botdPick').value || isoPlus(0);
+            const box = document.getElementById('botdPickBox'), meta = document.getElementById('botdMeta');
+            document.getElementById('botdHeadline').textContent = headline(iso);
+            box.innerHTML = '<div class="hint" style="padding:14px;text-align:center;">Loading…</div>';
+            document.getElementById('botdRunnersWrap').style.display = 'none';
+            try {
+                const r = await fetch('/api/botd?date=' + iso);
+                const d = await r.json();
+                if (!d.ok) { box.innerHTML = '<div class="botd-empty">' + escS(d.message || 'Could not load.') + '</div>'; meta.textContent = ''; return; }
+                document.getElementById('botdLo').textContent = d.criteria.min_odds.toFixed(2);
+                document.getElementById('botdHi').textContent = d.criteria.max_odds.toFixed(2);
+                meta.textContent = d.fixtures
+                    ? d.fixtures + ' fixture' + (d.fixtures === 1 ? '' : 's') + ' with odds · ' + d.candidates + ' selection' + (d.candidates === 1 ? '' : 's') + ' in range across ' + d.matches_with_candidates + ' match' + (d.matches_with_candidates === 1 ? '' : 'es')
+                    : '';
+                if (!d.pick) { box.innerHTML = '<div class="botd-empty">' + escS(d.message) + '</div>'; return; }
+                box.innerHTML = botdCard(d.pick) + (d.note ? '<div class="hint" style="margin-top:8px;">' + escS(d.note) + '</div>' : '');
+                if (d.runners.length) {
+                    document.getElementById('botdRunners').innerHTML = d.runners.map(botdRunner).join('');
+                    document.getElementById('botdRunnersWrap').style.display = '';
+                }
+            } catch (e) {
+                box.innerHTML = '<div class="botd-empty">Could not load: ' + escS(String(e)) + '</div>';
             }
         }
 

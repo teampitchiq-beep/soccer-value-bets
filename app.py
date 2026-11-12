@@ -837,6 +837,14 @@ def find_team_local(df, name, league_id=None):
     return None, None
 
 
+def _acca_pending():
+    try:
+        import acca_tracker
+        return acca_tracker.pending_count()
+    except Exception:
+        return 0
+
+
 def _shots_window():
     try:
         import shots_data
@@ -986,6 +994,7 @@ def index():
         shots_window=_shots_window(),
         btts_rows=sorted(btts_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
         x12_rows=sorted(x12_rows, key=lambda r: r["prob"], reverse=True),     # most likely outcome first
+        acca_pending=_acca_pending(),
     )
 
 
@@ -1025,6 +1034,41 @@ def api_acca():
     except ValueError as e:
         return jsonify({"ok": False, "message": str(e)}), 400
     return jsonify(res)
+
+
+# ---------------------------------------------------------------- acca tracking
+@app.route("/api/acca/track", methods=["GET", "POST"])
+def api_acca_track():
+    """GET: the three tracking sections (BTTS, Over/Under 2.5, 1X2), settled against the finished results on disk.
+    POST {acca: <the dict /api/acca returned>, stake: units (default 1)}: start tracking that acca."""
+    import acca_tracker as AT
+    if request.method == "POST":
+        body = request.get_json(silent=True) or {}
+        ok, message, acca = AT.add(body.get("acca"), body.get("stake"))
+        return jsonify({"ok": ok, "message": message, "id": acca["id"] if acca else None,
+                        "pending": AT.pending_count()}), (200 if ok else 400)
+    return jsonify(AT.view())
+
+
+@app.route("/api/acca/track/<int:acca_id>", methods=["DELETE"])
+def api_acca_track_delete(acca_id):
+    import acca_tracker as AT
+    ok = AT.delete(acca_id)
+    return jsonify({"ok": ok, "message": "Removed." if ok else "Acca not found."}), (200 if ok else 404)
+
+
+@app.route("/api/acca/track/<int:acca_id>/stake", methods=["POST"])
+def api_acca_track_stake(acca_id):
+    import acca_tracker as AT
+    ok, message = AT.set_stake(acca_id, (request.get_json(silent=True) or {}).get("stake"))
+    return jsonify({"ok": ok, "message": message}), (200 if ok else 400)
+
+
+@app.route("/api/acca/track/<int:acca_id>/void", methods=["POST"])
+def api_acca_track_void(acca_id):
+    import acca_tracker as AT
+    ok = AT.set_void(acca_id, bool((request.get_json(silent=True) or {}).get("void", True)))
+    return jsonify({"ok": ok, "message": "Updated." if ok else "Acca not found."}), (200 if ok else 404)
 
 
 def _shots_fixtures(iso, allow_api):
@@ -1077,6 +1121,22 @@ def api_shots_fill():
     res = SD.fetch_shots(ids, budget=limit, verbose=True)
     res.update(success=True, remaining=max(len(ids) - res["ok"] - res["none"], 0))
     return jsonify(res)
+
+
+@app.route("/api/botd")
+def api_botd():
+    """Bet of the Day for one Nairobi day (?date=YYYY-MM-DD; past, today or future). Reads the saved picks and the odds log only:
+    it never calls the API unless the saved picks are empty and need loading, exactly like the other tabs."""
+    import botd
+    iso = (request.args.get("date") or datetime.now(EAT).strftime("%Y-%m-%d")).strip()
+    try:
+        datetime.strptime(iso, "%Y-%m-%d")
+    except ValueError:
+        return jsonify({"ok": False, "message": "Bad date."}), 400
+    data = load_matches() if DF is not None else {"matches": []}
+    view = botd.day_view(iso, data.get("matches", []))
+    view["ok"] = True
+    return jsonify(view)
 
 
 @app.route("/api/trends")

@@ -386,9 +386,13 @@ input[type=date] { color-scheme: dark; }
 /* 1X2 tips: Home green, Draw gold, Away blue */
 .mtip.x-home { color: var(--over); } .mtip.x-draw { color: var(--gold); } .mtip.x-away { color: var(--under); }
 
-/* nine tabs no longer fit one row at the original size: tighter pills on wider screens (below ~1000px they still wrap, as before) */
+/* ten tabs no longer fit one row at the original size: tighter pills on wider screens (below ~1000px they still wrap, as before) */
 @media (min-width: 640px) {
-  .tabs { gap: 6px; }
-  .tab { padding: 9px 12px; gap: 6px; font-size: .88rem; min-height: 40px; }
-  .tab .badge-count { padding: 1px 7px; }
+  .tabs { gap: 4px; }
+  .tab { padding: 8px 8px; gap: 4px; font-size: .8rem; min-height: 38px; }
+  .tab .badge-count { padding: 0 5px; font-size: .7rem; }
 }
+
+/* a Today / Tomorrow chip with no fixtures */
+.date-btn.empty { color: var(--muted); }
+.date-btn.empty .dc { opacity: .75; }

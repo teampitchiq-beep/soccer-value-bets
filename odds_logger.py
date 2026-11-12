@@ -31,21 +31,53 @@ import pandas as pd
 
 LOG_CSV = "data/odds_log.csv"
 COLUMNS = ["logged_at", "event_id", "kickoff", "hours_to_kickoff", "league_id",
-           "home", "away", "lh", "la", "p_over", "over_odds", "under_odds", "model"]
+           "home", "away", "lh", "la", "p_over", "over_odds", "under_odds", "model",
+           # added later: the other markets' prices, so the Bet of the Day tab can rebuild past days (older rows leave them empty)
+           "btts_yes_odds", "btts_no_odds", "odds_home", "odds_draw", "odds_away"]
+ODDS_COLS = ["over_odds", "under_odds", "btts_yes_odds", "btts_no_odds", "odds_home", "odds_draw", "odds_away"]
 MODEL_TAG = "ridge_v1"
 RETRY_MIN = 10          # --watch retry interval when offline / failing
 
 
+def _okey(values):
+    """Comparable tuple of prices (None for missing), so 'nothing changed' also works for the newer columns."""
+    out = []
+    for v in values:
+        try:
+            out.append(None if v is None or pd.isna(v) or v == "" else round(float(v), 3))
+        except (TypeError, ValueError):
+            out.append(None)
+    return tuple(out)
+
+
+def _ensure_schema():
+    """Older logs only have the Over/Under columns: add the new ones (empty) in place, keeping every existing row."""
+    if not os.path.exists(LOG_CSV):
+        return
+    with open(LOG_CSV, encoding="utf-8") as f:
+        header = f.readline().strip().split(",")
+    if header == COLUMNS:
+        return
+    old = pd.read_csv(LOG_CSV)
+    for c in COLUMNS:
+        if c not in old.columns:
+            old[c] = pd.NA
+    old[COLUMNS].to_csv(LOG_CSV, index=False)
+
+
 def _last_seen():
-    """event_id -> (over_odds, under_odds) from the most recent logged snapshot."""
+    """event_id -> tuple of all logged prices from the most recent snapshot."""
     if not os.path.exists(LOG_CSV):
         return {}
     try:
-        old = pd.read_csv(LOG_CSV, usecols=["event_id", "over_odds", "under_odds"])
+        old = pd.read_csv(LOG_CSV)
     except Exception:
         return {}
+    for c in ODDS_COLS:
+        if c not in old.columns:
+            old[c] = pd.NA
     last = old.drop_duplicates("event_id", keep="last")
-    return {int(r.event_id): (r.over_odds, r.under_odds) for r in last.itertuples()}
+    return {int(r["event_id"]): _okey([r[c] for c in ODDS_COLS]) for _, r in last.iterrows()}
 
 
 def log_snapshot(matches, verbose=False):
@@ -65,7 +97,10 @@ def log_snapshot(matches, verbose=False):
         if pd.isna(kickoff) or kickoff <= now:
             continue                      # only genuine pre-kickoff prices
         eid = int(m["event_id"])
-        if eid in seen and seen[eid] == (over_o, under_o):
+        prices = {"over_odds": over_o, "under_odds": under_o, "btts_yes_odds": m.get("btts_yes_odds"),
+                  "btts_no_odds": m.get("btts_no_odds"), "odds_home": m.get("odds_home"),
+                  "odds_draw": m.get("odds_draw"), "odds_away": m.get("odds_away")}
+        if eid in seen and seen[eid] == _okey([prices[c] for c in ODDS_COLS]):
             continue                      # nothing changed
         rows.append({
             "logged_at": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -81,9 +116,12 @@ def log_snapshot(matches, verbose=False):
             "over_odds": over_o,
             "under_odds": under_o,
             "model": MODEL_TAG,
+            "btts_yes_odds": prices["btts_yes_odds"], "btts_no_odds": prices["btts_no_odds"],
+            "odds_home": prices["odds_home"], "odds_draw": prices["odds_draw"], "odds_away": prices["odds_away"],
         })
     if rows:
         os.makedirs("data", exist_ok=True)
+        _ensure_schema()
         pd.DataFrame(rows, columns=COLUMNS).to_csv(
             LOG_CSV, mode="a", index=False, header=not os.path.exists(LOG_CSV))
     if verbose:
