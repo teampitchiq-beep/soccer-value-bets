@@ -286,6 +286,7 @@
         <h3>Quick Links</h3>
         <button class="dl" type="button" onclick="goTab('matches')">📅 All Matches</button>
         <button class="dl" type="button" onclick="goTab('x12')">🏆 1X2</button>
+        <button class="dl" type="button" onclick="goTab('markets')">🎲 Markets</button>
         <button class="dl" type="button" onclick="goTab('botd')">⭐ Bet of the Day</button>
         <button class="dl" type="button" onclick="goTab('trends')">📈 Trends</button>
         <button class="dl" type="button" onclick="goTab('shots')">📊 Shots</button>
@@ -307,6 +308,9 @@
             </button>
             <button class="tab" data-tab="x12" onclick="switchTab('x12', this)">
                 🏆 1X2 <span class="badge-count">{{ x12_rows|length }}</span>
+            </button>
+            <button class="tab" data-tab="markets" onclick="switchTab('markets', this)">
+                🎲 Markets
             </button>
             <button class="tab" data-tab="botd" onclick="switchTab('botd', this)">
                 ⭐ Bet of the Day
@@ -587,6 +591,130 @@
                 <div class="empty">No upcoming matches to predict.<br>
                     <span class="hint">1X2 uses the same fixtures as All Matches.</span></div>
             {% endif %}
+        </section>
+
+        <!-- ================= MARKETS (Over/Under 1.5, Corners) ================= -->
+        <section id="markets" class="panel">
+            <div class="seg" id="marketViews" style="margin-bottom:14px;">
+                <button type="button" class="active" data-view="ou15" onclick="showMarketsView('ou15')">⚽ Over / Under 1.5 <span class="dc">{{ ou15_rows|length }}</span></button>
+                <button type="button" data-view="corners" onclick="showMarketsView('corners')">🚩 Corners <span class="dc">{{ corner_info.covered or 0 }}</span></button>
+            </div>
+
+            <!-- ---------- Over / Under 1.5 ---------- -->
+            <div id="ou15View">
+                <div class="pill-title"><span>Over / Under 1.5 Goals</span></div>
+                <div class="hint" style="margin:-6px 0 12px;">
+                    Chance of 2 or more goals, from the same expected goals as Over/Under 2.5, BTTS and 1X2 · bookmaker odds shown when available
+                </div>
+                {% if ou15_rows %}
+                    <div class="seg" id="ouDateFilter">
+                        <button class="date-btn" data-date="all" onclick="filterDate('ou15', 'all', this)">All <span class="dc">{{ ou15_rows|length }}</span></button>
+                    </div>
+                    <div class="date-headline" id="ouDateHeadline"></div>
+                    <div class="sec-bar">Over / Under 1.5 · highest probability first</div>
+                    <div class="mlist" id="ou15List">
+                        <div class="mhead">
+                            <span class="c">League</span><span>Match</span><span class="c">Tip</span><span class="c">Prob</span>
+                            <span class="c hide-sm">Odds O/U</span><span class="c hide-sm">XG</span><span class="c hide-md">Top score</span><span></span>
+                        </div>
+                        {% for r in ou15_rows %}
+                            <div class="mrow" data-match-date="{{ r.date|eat_date }}" onclick="toggleRow(this)">
+                                <div class="mleague"><span class="lgcode">{{ LG.get(r.league_name, r.league_name[:3]|upper) }}</span><span class="ko">{{ r.date|eat_time }}</span></div>
+                                <div class="mteams"><span class="t">{{ r.home }}</span><span class="t">{{ r.away }}</span></div>
+                                <div class="mtip {{ 'over' if r.pick_key == 'Over' else 'under' }}">{{ r.pick|upper }}<span class="tier {{ r.tier }}">{{ r.tier }}</span></div>
+                                <div class="mprob">{{ (r.prob*100)|round(1) }}%</div>
+                                <div class="modds hide-sm">{{ r.odds_over if r.odds_over else '—' }} / {{ r.odds_under if r.odds_under else '—' }}</div>
+                                <div class="mxg hide-sm">{{ r.lh }} – {{ r.la }}</div>
+                                <div class="mscore hide-md">{{ r.top_2_scores[0].score if r.top_2_scores else "—" }}</div>
+                                <button class="mstat" type="button" aria-label="Details">▾</button>
+                                <div class="mdetail">
+                                    <div><div class="k">Over 1.5</div><div class="v over">{{ (r.p_over*100)|round(1) }}%{% if r.odds_over %} @ {{ r.odds_over }}{% endif %}</div></div>
+                                    <div><div class="k">Under 1.5</div><div class="v under">{{ (r.p_under*100)|round(1) }}%{% if r.odds_under %} @ {{ r.odds_under }}{% endif %}</div></div>
+                                    {% if r.book %}<div><div class="k">Bookmaker implied (O · U)</div><div class="v">{{ r.book.Over|round|int }} · {{ r.book.Under|round|int }}%</div></div>{% endif %}
+                                    <div><div class="k">Value (EV on pick)</div><div class="v {% if r.ev is not none and r.ev > 0 %}over{% endif %}">{% if r.ev is not none %}{{ '%+.1f'|format(r.ev*100) }}%{% else %}no odds{% endif %}</div></div>
+                                    <div><div class="k">Model fair odds (pick)</div><div class="v">{{ (1 / r.prob)|round(2) }}</div></div>
+                                    <div><div class="k">Expected goals</div><div class="v">{{ r.lh }} + {{ r.la }}</div></div>
+                                    <div><div class="k">Top 2 scores</div><div class="v">{% for s in r.top_2_scores %}{{ s.score }} {{ s.prob }}%{% if not loop.last %} · {% endif %}{% endfor %}</div></div>
+                                    <div><div class="k">Kickoff</div><div class="v">{{ r.date|eat_full }} EAT</div></div>
+                                    <div><div class="k">Data (appearances H / A)</div><div class="v">{{ r.home_apps }} / {{ r.away_apps }}</div></div>
+                                    <div><div class="k">League</div><div class="v">{{ r.league_name }}</div></div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="no-filter-results" id="ouNoFilter">No matches on this date.</div>
+                    <div class="hint" style="margin-top:10px;">
+                        Backtest on 3,429 of your matches: Over 1.5 happened 79.2% of the time and the model averaged 79.1%, so it is calibrated as it stands.
+                        It is a lopsided market, though: the edge over simply saying "Over" is small, and the Over side pays only about 1.2–1.4.
+                        {% if not ou15_rows|selectattr('odds_over')|list %}No 1.5 odds are in today's saved picks: tap ↻ Refresh once to load them.{% endif %}
+                    </div>
+                {% else %}
+                    <div class="empty">No upcoming matches to predict.<br><span class="hint">Over/Under 1.5 uses the same fixtures as All Matches.</span></div>
+                {% endif %}
+            </div>
+
+            <!-- ---------- Corners ---------- -->
+            <div id="cornersView" style="display:none;">
+                <div class="pill-title"><span>Corners · Over / Under {{ '%g'|format(corner_info.line) }}</span></div>
+                <div class="hint" style="margin:-6px 0 12px;">
+                    Expected corners from each team's corners-for against the opponent's corners-conceded (recency-weighted, like xG), and the chance the match has
+                    <b>{{ (corner_info.line + 0.5)|int }}+ corners</b> (over {{ '%g'|format(corner_info.line) }}).
+                    <b>Model only:</b> the free odds feed has no corners prices, so there is no bookmaker price or value figure here.
+                </div>
+                {% if not corner_info.ready %}
+                    <div class="empty">🚩 Corners are not ready yet.<br><span class="hint">{{ corner_info.message }}</span></div>
+                {% elif corner_rows %}
+                    <div class="seg" id="cDateFilter">
+                        <button class="date-btn" data-date="all" onclick="filterDate('corners', 'all', this)">All <span class="dc">{{ corner_rows|length }}</span></button>
+                    </div>
+                    <div class="date-headline" id="cDateHeadline"></div>
+                    <div class="sec-bar">Corners · over / under {{ '%g'|format(corner_info.line) }} · highest probability first</div>
+                    <div class="mlist" id="cornersList">
+                        <div class="mhead">
+                            <span class="c">League</span><span>Match</span><span class="c">Tip</span><span class="c">Prob</span>
+                            <span class="c hide-sm">Fair odds</span><span class="c hide-sm">Exp H – A</span><span class="c hide-md">Exp total</span><span></span>
+                        </div>
+                        {% for r in corner_rows %}
+                            <div class="mrow" data-match-date="{{ r.date|eat_date }}" onclick="toggleRow(this)">
+                                <div class="mleague"><span class="lgcode">{{ LG.get(r.league_name, r.league_name[:3]|upper) }}</span><span class="ko">{{ r.date|eat_time }}</span></div>
+                                <div class="mteams"><span class="t">{{ r.home }}</span><span class="t">{{ r.away }}</span></div>
+                                {% if r.ready %}
+                                    <div class="mtip {{ 'over' if r.pick_key == 'Over' else 'under' }}">{{ r.pick|upper }}<span class="tier {{ r.tier }}">{{ r.tier }}</span></div>
+                                    <div class="mprob">{{ (r.prob*100)|round(1) }}%</div>
+                                    <div class="modds hide-sm">{{ r.fair_over if r.pick_key == 'Over' else r.fair_under }}</div>
+                                    <div class="mxg hide-sm">{{ r.xc_home }} – {{ r.xc_away }}</div>
+                                    <div class="mscore hide-md">{{ r.xc_total }}</div>
+                                {% else %}
+                                    <div class="mtip" style="color:var(--muted);">N/A</div><div class="mprob">—</div>
+                                    <div class="modds hide-sm">—</div><div class="mxg hide-sm">—</div><div class="mscore hide-md">—</div>
+                                {% endif %}
+                                <button class="mstat" type="button" aria-label="Details">▾</button>
+                                <div class="mdetail">
+                                    {% if r.ready %}
+                                        <div><div class="k">Over {{ '%g'|format(r.line) }}</div><div class="v over">{{ (r.p_over*100)|round(1) }}% · fair {{ r.fair_over }}</div></div>
+                                        <div><div class="k">Under {{ '%g'|format(r.line) }}</div><div class="v under">{{ (r.p_under*100)|round(1) }}% · fair {{ r.fair_under }}</div></div>
+                                        <div><div class="k">Expected corners ({{ r.home }})</div><div class="v">{{ r.xc_home }}</div></div>
+                                        <div><div class="k">Expected corners ({{ r.away }})</div><div class="v">{{ r.xc_away }}</div></div>
+                                        <div><div class="k">Expected match total (mean)</div><div class="v">{{ r.xc_total }} <span class="hint">vs line {{ '%g'|format(r.line) }}</span></div></div>
+                                        <div><div class="k">Spread (negative binomial k)</div><div class="v">{{ r.spread_k }}</div></div>
+                                    {% else %}
+                                        <div><div class="k">Why no number</div><div class="v">One of the teams has no corner history yet</div></div>
+                                    {% endif %}
+                                    <div><div class="k">Kickoff</div><div class="v">{{ r.date|eat_full }} EAT</div></div>
+                                    <div><div class="k">League</div><div class="v">{{ r.league_name }}</div></div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="no-filter-results" id="cNoFilter">No matches on this date.</div>
+                    <div class="hint" style="margin-top:10px;">
+                        Built on {{ corner_info.matches_with_corners }} finished matches with corner stats. Run <b>python corners_backtest.py</b> to check how well calibrated it is on your data.
+                        The "fair odds" are 1 ÷ the model's probability, not a bookmaker price.
+                    </div>
+                {% else %}
+                    <div class="empty">No upcoming matches to predict.<br><span class="hint">Corners use the same fixtures as All Matches.</span></div>
+                {% endif %}
+            </div>
         </section>
 
         <!-- ================= BET OF THE DAY ================= -->
@@ -903,6 +1031,10 @@
             <div class="mlist" id="datePickBtts"></div>
             <div class="sec-bar" id="datePick1x2Bar" style="display:none;">Match Result · 1X2</div>
             <div class="mlist" id="datePick1x2"></div>
+            <div class="sec-bar" id="datePickOu15Bar" style="display:none;">Over / Under 1.5</div>
+            <div class="mlist" id="datePickOu15"></div>
+            <div class="sec-bar" id="datePickCornersBar" style="display:none;">Corners</div>
+            <div class="mlist" id="datePickCorners"></div>
             <div class="sec-bar" id="datePickResultsBar" style="display:none;">Results</div>
             <div class="rl" id="datePickResults" style="display:none;"></div>
             <div class="no-filter-results" id="datePickNone">No matches or results on this date.</div>
@@ -1054,6 +1186,39 @@
                                     <span class="value">{{ x.pick }} · {{ (x.prob*100)|round(1) }}% <span class="tier {{ x.tier }}">{{ x.tier }}</span></span></div>
                             {% endif %}
 
+                            {% if result.ou15 %}
+                                {% set o15 = result.ou15 %}
+                                <h2 style="margin-top:14px;">⚽ Over / Under 1.5</h2>
+                                <div class="row"><span class="label">Over 1.5</span><span class="value over">{{ (o15.p_over*100)|round(1) }}%</span></div>
+                                <div class="row"><span class="label">Under 1.5</span><span class="value under">{{ (o15.p_under*100)|round(1) }}%</span></div>
+                                {{ odds_row('Over 1.5', o15.p_over*100, o15.odds_over) }}
+                                {{ odds_row('Under 1.5', o15.p_under*100, o15.odds_under) }}
+                                {% if o15.book %}
+                                    <div class="row"><span class="label">Bookmaker implied (O · U)</span>
+                                        <span class="value" style="font-size:.9rem;">{{ o15.book.Over|round|int }} · {{ o15.book.Under|round|int }}%</span></div>
+                                {% endif %}
+                                <div class="row"><span class="label">Pick</span>
+                                    <span class="value">{{ o15.pick }} · {{ (o15.prob*100)|round(1) }}% <span class="tier {{ o15.tier }}">{{ o15.tier }}</span></span></div>
+                            {% endif %}
+
+                            {% if result.corners %}
+                                {% set cn = result.corners %}
+                                <h2 style="margin-top:14px;">🚩 Corners · over / under {{ '%g'|format(cn.line) }}</h2>
+                                <div class="row"><span class="label">Over {{ '%g'|format(cn.line) }} ({{ (cn.line + 0.5)|int }}+ corners)</span>
+                                    <span class="value over">{{ (cn.p_over*100)|round(1) }}% · fair {{ cn.fair_over }}</span></div>
+                                <div class="row"><span class="label">Under {{ '%g'|format(cn.line) }}</span>
+                                    <span class="value under">{{ (cn.p_under*100)|round(1) }}% · fair {{ cn.fair_under }}</span></div>
+                                <div class="row"><span class="label">Expected corners ({{ result.home_team }} / {{ result.away_team }})</span>
+                                    <span class="value">{{ cn.xc_home }} / {{ cn.xc_away }}</span></div>
+                                <div class="row"><span class="label">Expected match total (mean)</span>
+                                    <span class="value">{{ cn.xc_total }} <span class="hint">vs line {{ '%g'|format(cn.line) }}</span></span></div>
+                                <div class="row"><span class="label">Pick</span>
+                                    <span class="value">{{ cn.pick }} · {{ (cn.prob*100)|round(1) }}% <span class="tier {{ cn.tier }}">{{ cn.tier }}</span></span></div>
+                                <div class="hint">Model only: the free odds feed has no corners prices, so there is no bookmaker price or value figure.</div>
+                            {% elif result.corners_info %}
+                                <div class="hint" style="margin-top:12px;">🚩 Corners: {{ result.corners_info.message or 'not available.' }}</div>
+                            {% endif %}
+
                             <div class="hint" style="margin-top:12px;">
                                 <b>Real</b> = bookmaker price from today's saved picks
                                 {% if result.real %}(fixture found, kickoff {{ result.real.kickoff|eat_full }} EAT){% else %}(this pairing is not an upcoming fixture in today's saved picks, so it shows n/a){% endif %}.
@@ -1146,7 +1311,9 @@
         const FILTERS = {
             goals:   {list: '#matchList',  bar: 'dateFilter',  head: 'dateHeadline',  none: 'noFilterResults'},
             btts:    {list: '#bttsList',    bar: 'bDateFilter', head: 'bDateHeadline', none: 'bNoFilter'},
-            x12:     {list: '#x12List',     bar: 'xDateFilter', head: 'xDateHeadline', none: 'xNoFilter'}
+            x12:     {list: '#x12List',     bar: 'xDateFilter', head: 'xDateHeadline', none: 'xNoFilter'},
+            ou15:    {list: '#ou15List',    bar: 'ouDateFilter', head: 'ouDateHeadline', none: 'ouNoFilter'},
+            corners: {list: '#cornersList', bar: 'cDateFilter', head: 'cDateHeadline', none: 'cNoFilter'}
         };
 
         function initDateFilter(key) {
@@ -1329,6 +1496,8 @@
                 document.querySelectorAll('#accaMarket button').forEach(x => x.classList.toggle('active', x === b));
                 const mk = CFG.markets.find(x => x.key === st.market);
                 if (mk && mk.min_prob != null) document.getElementById('accaProb').value = mk.min_prob;   // e.g. 45 for 1X2, 58 for Over/Under and BTTS
+                const cb = document.getElementById('accaCombined');
+                if (cb && mk && mk.min_combined != null) cb.value = mk.min_combined;                     // 1.5 for Over/Under 1.5 (short prices), 2.0 for the rest
                 drawSides(); clearOut();
             });
             document.getElementById('accaSide').addEventListener('click', e => {
@@ -1660,6 +1829,13 @@
             }
         }
 
+        // ---- Markets tab (Over/Under 1.5, Corners) ---------------------------------------------
+        function showMarketsView(name) {
+            document.getElementById('ou15View').style.display = name === 'ou15' ? '' : 'none';
+            document.getElementById('cornersView').style.display = name === 'corners' ? '' : 'none';
+            document.querySelectorAll('#marketViews button').forEach(b => b.classList.toggle('active', b.dataset.view === name));
+        }
+
         // ---- Acca tracking ---------------------------------------------------------------------
         window.TRK_DEFAULT_STAKE = 1;
         let trkLoaded = false, trkData = null;
@@ -1851,6 +2027,9 @@
                 '<div class="botd-sec">📈 Over / Under 2.5</div>' +
                 botdRow('Over 2.5', b.ou.p_over, b.ou.odds_over, M === 'ou25' && S === 'Over') +
                 botdRow('Under 2.5', b.ou.p_under, b.ou.odds_under, M === 'ou25' && S === 'Under') +
+                (b.ou15 ? '<div class="botd-sec">📉 Over / Under 1.5</div>' +
+                    botdRow('Over 1.5', b.ou15.p_over, b.ou15.odds_over, M === 'ou15' && S === 'Over') +
+                    botdRow('Under 1.5', b.ou15.p_under, b.ou15.odds_under, M === 'ou15' && S === 'Under') : '') +
                 '<div class="botd-sec">⚽ Both teams to score</div>' +
                 botdRow('BTTS Yes', b.btts.p_yes, b.btts.odds_yes, M === 'btts' && S === 'Yes') +
                 botdRow('BTTS No', b.btts.p_no, b.btts.odds_no, M === 'btts' && S === 'No') +
@@ -1917,9 +2096,13 @@
             const rBox = document.getElementById('datePickResults');
             const bBox = document.getElementById('datePickBtts');
             const xBox = document.getElementById('datePick1x2');
+            const oBox = document.getElementById('datePickOu15');
+            const cBox = document.getElementById('datePickCorners');
             mBox.innerHTML = '';
             bBox.innerHTML = '';
             xBox.innerHTML = '';
+            oBox.innerHTML = '';
+            cBox.innerHTML = '';
             rBox.innerHTML = '';
             let n = 0;
             if (iso) {
@@ -1928,6 +2111,18 @@
                     c.classList.remove('open');
                     c.style.display = '';
                     bBox.appendChild(c); n++;
+                });
+                document.querySelectorAll('#ou15List .mrow[data-match-date="' + iso + '"]').forEach(r => {
+                    const c = r.cloneNode(true);
+                    c.classList.remove('open');
+                    c.style.display = '';
+                    oBox.appendChild(c); n++;
+                });
+                document.querySelectorAll('#cornersList .mrow[data-match-date="' + iso + '"]').forEach(r => {
+                    const c = r.cloneNode(true);
+                    c.classList.remove('open');
+                    c.style.display = '';
+                    cBox.appendChild(c); n++;
                 });
                 document.querySelectorAll('#x12List .mrow[data-match-date="' + iso + '"]').forEach(r => {
                     const c = r.cloneNode(true);
@@ -1950,6 +2145,8 @@
             document.getElementById('datePickGoalsBar').style.display = mBox.children.length ? '' : 'none';
             document.getElementById('datePickBttsBar').style.display = bBox.children.length ? '' : 'none';
             document.getElementById('datePick1x2Bar').style.display = xBox.children.length ? '' : 'none';
+            document.getElementById('datePickOu15Bar').style.display = oBox.children.length ? '' : 'none';
+            document.getElementById('datePickCornersBar').style.display = cBox.children.length ? '' : 'none';
             document.getElementById('datePickResultsBar').style.display = rBox.children.length ? '' : 'none';
             rBox.style.display = rBox.children.length ? '' : 'none';
             document.getElementById('datePickHeadline').textContent = iso ? headline(iso) : '';
@@ -1961,6 +2158,8 @@
             initDateFilter('goals');
             initDateFilter('btts');
             initDateFilter('x12');
+            initDateFilter('ou15');
+            initDateFilter('corners');
 
             // starting tab: ?tab=... in the URL, or Single Match right after a prediction
             const hasResult = {{ 'true' if result else 'false' }};

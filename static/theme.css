@@ -386,11 +386,11 @@ input[type=date] { color-scheme: dark; }
 /* 1X2 tips: Home green, Draw gold, Away blue */
 .mtip.x-home { color: var(--over); } .mtip.x-draw { color: var(--gold); } .mtip.x-away { color: var(--under); }
 
-/* ten tabs no longer fit one row at the original size: tighter pills on wider screens (below ~1000px they still wrap, as before) */
+/* eleven tabs no longer fit one row at the original size: tighter pills on wider screens (below ~1000px they still wrap, as before) */
 @media (min-width: 640px) {
-  .tabs { gap: 4px; }
-  .tab { padding: 8px 8px; gap: 4px; font-size: .8rem; min-height: 38px; }
-  .tab .badge-count { padding: 0 5px; font-size: .7rem; }
+  .tabs { gap: 3px; }
+  .tab { padding: 7px 7px; gap: 3px; font-size: .78rem; min-height: 36px; }
+  .tab .badge-count { padding: 0 4px; font-size: .66rem; }
 }
 
 /* a Today / Tomorrow chip with no fixtures */

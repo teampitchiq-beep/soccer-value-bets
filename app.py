@@ -914,7 +914,8 @@ def index():
                     pred["real"] = ({"over25": fx.get("over_odds"), "under25": fx.get("under_odds"),
                                      "btts_yes": fx.get("btts_yes_odds"), "btts_no": fx.get("btts_no_odds"),
                                      "odds_home": fx.get("odds_home"), "odds_draw": fx.get("odds_draw"),
-                                     "odds_away": fx.get("odds_away"), "kickoff": fx.get("date")} if fx else None)
+                                     "odds_away": fx.get("odds_away"), "over15": fx.get("over15_odds"),
+                                     "under15": fx.get("under15_odds"), "kickoff": fx.get("date")} if fx else None)
                     try:
                         from btts_model import single as btts_single
                         pred["btts"] = btts_single(pred["lambda_home"], pred["lambda_away"],
@@ -930,6 +931,19 @@ def index():
                     except Exception as e:
                         print(f"1X2 for single match failed: {e}")
                         pred["x12"] = None
+                    try:
+                        from ou15_model import single as ou15_single
+                        rl = pred["real"] or {}
+                        pred["ou15"] = ou15_single(pred["lambda_home"], pred["lambda_away"], rl.get("over15"), rl.get("under15"))
+                    except Exception as e:
+                        print(f"Over/Under 1.5 for single match failed: {e}")
+                        pred["ou15"] = None
+                    try:                                          # model-only: the free odds feed has no corners prices
+                        import corners_model
+                        pred["corners"], pred["corners_info"] = corners_model.single(hid, aid, league_id)
+                    except Exception as e:
+                        print(f"Corners for single match failed: {e}")
+                        pred["corners"], pred["corners_info"] = None, {"ready": False, "message": "Corners are not available right now.", "line": 7.5}
                     pred["ranked"] = _rank_selections(pred)
                     result = pred
                 except Exception as e:
@@ -938,7 +952,8 @@ def index():
     try:
         import acca_builder as AB
         acca_days = AB.days_available(all_matches)
-        acca_cfg = {"markets": [{"key": k, "title": t, "sides": list(sd), "min_prob": round(AB.default_min_prob(k) * 100)}
+        acca_cfg = {"markets": [{"key": k, "title": t, "sides": list(sd), "min_prob": round(AB.default_min_prob(k) * 100),
+                                 "min_combined": AB.default_min_combined(k)}
                                 for k, (t, sd) in AB.MARKETS.items()],
                     "min_prob": round(AB.DEFAULT_MIN_PROB * 100), "min_odds": AB.DEFAULT_MIN_ODDS,
                     "max_legs": AB.MAX_LEGS, "min_legs": AB.MIN_LEGS,
@@ -963,6 +978,21 @@ def index():
     except Exception as e:
         print(f"1X2 build failed: {e}")
         x12_rows = []
+
+    try:
+        from ou15_model import ou15_predictions
+        ou15_rows = ou15_predictions(all_matches)
+    except Exception as e:
+        print(f"Over/Under 1.5 build failed: {e}")
+        ou15_rows = []
+
+    try:                                                          # model-only market: no bookmaker prices exist for it on the free plan
+        import corners_model
+        corner_rows, corner_info = corners_model.corner_predictions(all_matches)
+    except Exception as e:
+        print(f"Corners build failed: {e}")
+        corner_rows, corner_info = [], {"ready": False, "message": "Corners are not available right now.", "line": 7.5,
+                                        "matches_with_corners": 0, "needed": 200, "covered": 0}
 
     teams_by_league = {}
     if DF is not None and not DF.empty:
@@ -995,6 +1025,9 @@ def index():
         btts_rows=sorted(btts_rows, key=lambda r: r["prob"], reverse=True),   # highest probability first
         x12_rows=sorted(x12_rows, key=lambda r: r["prob"], reverse=True),     # most likely outcome first
         acca_pending=_acca_pending(),
+        ou15_rows=sorted(ou15_rows, key=lambda r: r["prob"], reverse=True),
+        corner_rows=sorted(corner_rows, key=lambda r: (not r["ready"], -(r.get("prob") or 0))),
+        corner_info=corner_info,
     )
 
 
@@ -1006,7 +1039,7 @@ def api_matches():
 @app.route("/api/acca")
 def api_acca():
     """Acca for ONE market from today's saved fixtures and real bookmaker odds. Makes no API requests of its own.
-    Query: market (ou25|btts|1x2), side (best or a side), day (YYYY-MM-DD, EAT), legs (auto = best of 2 or 3 matches,
+    Query: market (ou25|ou15|btts|1x2), side (best or a side), day (YYYY-MM-DD, EAT), legs (auto = best of 2 or 3 matches,
     or exactly 2, or exactly 3), min_prob (%), min_odds (per leg), min_combined (combined odds target).
     By probability only."""
     import acca_builder as AB
@@ -1024,13 +1057,15 @@ def api_acca():
     else:
         legs_lo, legs_hi = AB.MIN_LEGS, AB.DEFAULT_LEGS        # auto: the best of 2 or 3
     data = load_matches() if DF is not None else {"matches": []}
+    market = a.get("market", "ou25")
     try:
         res = AB.build_acca(
-            data.get("matches", []), a.get("market", "ou25"), a.get("side", "best"), day=a.get("day") or None,
+            data.get("matches", []), market, a.get("side", "best"), day=a.get("day") or None,
             legs=legs_hi, min_legs=legs_lo,
-            min_prob=num("min_prob", AB.DEFAULT_MIN_PROB * 100, 0, 99) / 100.0,
+            # omitted parameters fall back to that market's own defaults (1X2: 45% probability; Over/Under 1.5: 1.50 combined odds)
+            min_prob=num("min_prob", AB.default_min_prob(market) * 100, 0, 99) / 100.0,
             min_odds=num("min_odds", AB.DEFAULT_MIN_ODDS, 1.0, 50.0),
-            min_combined=num("min_combined", AB.DEFAULT_MIN_COMBINED, 1.01, 1000.0))
+            min_combined=num("min_combined", AB.default_min_combined(market), 1.01, 1000.0))
     except ValueError as e:
         return jsonify({"ok": False, "message": str(e)}), 400
     return jsonify(res)

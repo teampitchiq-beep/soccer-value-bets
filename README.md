@@ -128,11 +128,26 @@ What is different for national teams, and what the code does about it:
 
 The date bar on All Matches, BTTS and 1X2 always shows **Today** and **Tomorrow** chips, with a 0 (muted) when there are no fixtures that day, so you can tell at a glance that nothing is scheduled. It opens on the earliest day that has matches.
 
+## 🎲 Markets: Over / Under 1.5 and Corners
+
+A **Markets** tab with two views (Over / Under 1.5 · Corners), each with the same date chips as BTTS and 1X2 (including empty Today / Tomorrow chips); both are also listed in the Date tab.
+- **Over / Under 1.5 goals** (`ou15_model.py`): P(2+ goals) from the stored expected goals, the same as Over/Under 2.5, BTTS and 1X2. Real prices (`over_15_goals`, `under_15_goals`) come in the same odds request, so it costs nothing extra.
+  It is available everywhere a real price is used: an **Acca market** (default combined target 1.50, because Over 1.5 legs pay only about 1.2-1.4), a candidate for **Bet of the Day** (when a price is inside 1.40-1.90),
+  its own **Acca tracking** section, and a block on the **Single Match** card. Backtest on 3,429 matches: calibrated as it stands (79.1% predicted vs 79.2% actual), so the old hand-tuned logit shift is not applied; the edge over always saying "Over" is small.
+  The Single Match *ranked selections* list leaves Over 1.5 out on purpose: at about 79% it would top that list almost every time.
+- **Corners** (`corners_model.py`, line `CORNERS_LINE = 7.5`): expected corners from each team's corners-for against the opponent's corners-conceded (the same engine as xG and shots, recency-weighted, own baseline and home advantage per league), added into the match mean;
+  a negative binomial with an out-of-sample spread gives P(Over 7.5) = P(8+ corners). The same engine drives the Corners cards in the Trends tab, so they always agree.
+  **Model only:** Bzzoiro's free odds feed has no corners prices (only the paid comparison endpoint has them), so it shows fair odds (1 / probability) but never a bookmaker price or a value figure, and corners cannot be used in the Acca builder, Bet of the Day or acca tracking, which all need a real price.
+  It needs corner stats for at least 200 finished matches (the stats loader fills about 1,000 a day); until then the view says how many it has. With a typical match mean near 9.6 corners, a 7.5 line is cleared most of the time, so most tips read OVER; the information is in the probability and the expected total (set `CORNERS_LINE` to a higher number for a more balanced line).
+  **Check it on your own data:** `python corners_backtest.py` (walk-forward: calibration table, bias and error of the expected total, other lines, and how much the spread helps).
+- Odds log: it now also records the 1.5 prices (upgraded in place, no rows lost).
+- Settings (`config.py`): `CORNERS_LINE = 7.5`, `CORNERS_HIGH_PROB = 0.85`, `CORNERS_MEDIUM_PROB = 0.75`, `OU15_HIGH_PROB = 0.85`, `OU15_MEDIUM_PROB = 0.78`, `ACCA_MIN_ODDS_OU15 = 1.50`.
+
 ## 📒 Acca tracking
 
 Inside the **Acca** tab there are two views: 🛠 **Build** and 📒 **Tracking** (a Quick Links entry jumps straight to it; the badge counts accas still pending).
 After you generate an acca, tap **➕ Track this acca**: it is saved in `data/acca_tracker.json` with **1 unit** staked by default (change the units before adding, or per acca later).
-Every acca belongs to one market, so tracking has **three separate sections: BTTS, Over / Under 2.5 and Match Result 1X2**. Each shows:
+Every acca belongs to one market, so tracking has **four separate sections: BTTS, Over / Under 2.5, Over / Under 1.5 and Match Result 1X2**. Each shows:
 - **ROI** (profit ÷ units staked), **win rate**, **profit** in units, and a won / lost / pending bar;
 - **streaks**: winning and losing streaks (a streak = 2 or more identical results in a row, in time order), plus the longest winning and losing runs and the current run;
 - average odds, the model's expected win rate next to the real one, max drawdown and units still at risk;

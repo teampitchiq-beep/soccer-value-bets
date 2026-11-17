@@ -2,7 +2,7 @@
 """
 Acca tracking: every acca you choose to track from the Acca builder, kept in data/acca_tracker.json and settled from your finished-match results.
 
-  * One acca = one market (BTTS, Over/Under 2.5 or 1X2), exactly as the builder makes them, so each acca belongs to one of three separate sections.
+  * One acca = one market (BTTS, Over/Under 2.5, Over/Under 1.5 or 1X2), exactly as the builder makes them, so each acca belongs to one of four separate sections.
   * Default stake: 1 unit per acca (ACCA_DEFAULT_STAKE), editable per acca afterwards.
   * Settlement: each leg is graded from the final score (matches.csv). An acca is LOST as soon as any leg has lost, WON when every leg has won,
     and stays PENDING until then. A postponed match can be voided by hand: a voided acca is left out of every statistic.
@@ -25,7 +25,8 @@ DATA_DIR = getattr(config, "DATA_DIR", "data")
 STORE = os.path.join(DATA_DIR, "acca_tracker.json")
 DEFAULT_STAKE = float(getattr(config, "ACCA_DEFAULT_STAKE", 1.0))
 STREAK_MIN = max(2, int(getattr(config, "ACCA_STREAK_MIN", 2)))
-SECTIONS = [("btts", "Both Teams To Score", "⚽"), ("ou25", "Over / Under 2.5", "📈"), ("1x2", "Match Result 1X2", "🏆")]
+SECTIONS = [("btts", "Both Teams To Score", "⚽"), ("ou25", "Over / Under 2.5", "📈"), ("ou15", "Over / Under 1.5", "📉"),
+            ("1x2", "Match Result 1X2", "🏆")]
 _lock = threading.RLock()
 
 
@@ -332,13 +333,22 @@ def _selftest():
         empty = section_stats([])
         assert empty["roi"] is None and empty["win_rate"] is None and empty["series"] == [{"n": 0, "cum": 0.0, "id": None, "result": None, "profit": 0.0}]
 
+        # --- Over/Under 1.5 accas are accepted and graded on total goals >= 2
+        def l15(i, side):
+            return {"event_id": i, "home": f"H{i}", "away": f"A{i}", "league": "L", "kickoff_iso": "2026-11-10T17:00:00+03:00", "label": f"{side} 1.5", "side": side, "prob": 0.8, "odds": 1.25}
+        ok, _, a15 = add(acca("ou15", [l15(61, "Over"), l15(62, "Over")]))
+        assert ok and abs(a15["odds"] - 1.5625) < 1e-9
+        settle_one(a15, {61: (1, 1), 62: (2, 0)}); assert a15["status"] == "won"
+        settle_one(a15, {61: (1, 0), 62: (2, 0)}); assert a15["status"] == "lost"
+        assert not add(acca("ou15", [l15(63, "Yes"), l15(64, "Over")]))[0]
+
         # --- edit / delete / view persistence
         assert set_stake(2, 3)[0] and by(2)["stake"] == 3.0 and not set_stake(2, -1)[0] and not set_stake(99, 1)[0]
         assert set_void(2, True) and by(2)["void"] and delete(2) and not delete(2)
         v = view(scores={7: (1, 1), 8: (0, 2)})                             # acca 3: BTTS Yes @7 won, BTTS Yes @8 lost -> lost
         sec = next(s for s in v["sections"] if s["market"] == "btts")
         assert next(r for r in sec["accas"] if r["id"] == 3)["status"] == "lost"
-        assert [s["market"] for s in v["sections"]] == ["btts", "ou25", "1x2"]
+        assert [s["market"] for s in v["sections"]] == ["btts", "ou25", "ou15", "1x2"]
         print("acca_tracker self-test passed")
     finally:
         STORE = old

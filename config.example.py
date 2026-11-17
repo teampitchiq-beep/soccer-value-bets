@@ -110,3 +110,11 @@ NATIONAL_TEAM_LEAGUES = []
 # ============ ACCA TRACKING (optional) ============
 # ACCA_DEFAULT_STAKE = 1.0   # units staked on every tracked acca (editable per acca)
 # ACCA_STREAK_MIN    = 2     # a streak is this many identical results in a row (minimum 2)
+
+# ============ OVER/UNDER 1.5 AND CORNERS (optional) ============
+# CORNERS_LINE         = 7.5    # Over 7.5 = 8 or more corners in the match
+# CORNERS_HIGH_PROB    = 0.85   # confidence tiers on the probability of the model's pick
+# CORNERS_MEDIUM_PROB  = 0.75
+# OU15_HIGH_PROB       = 0.85
+# OU15_MEDIUM_PROB     = 0.78
+# ACCA_MIN_ODDS_OU15   = 1.50   # default combined-odds target for Over/Under 1.5 accas (the legs pay only ~1.2-1.4)

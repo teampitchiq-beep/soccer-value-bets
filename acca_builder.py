@@ -17,7 +17,9 @@ So when the most probable combination falls short of the combined-odds target, t
 probable combination that does reach it (swapping in lower-probability, higher-paying legs, or using 3 legs instead of 2).
 The search is exact (a Pareto dynamic programme), not a heuristic. There is no value / expected-value test.
 
-Markets: ou25 (Over/Under 2.5), btts (Both Teams To Score Yes/No) and 1x2 (Match Result: Home / Draw / Away). Nothing else.
+Markets: ou25 (Over/Under 2.5), ou15 (Over/Under 1.5), btts (Both Teams To Score Yes/No) and 1x2 (Match Result: Home / Draw / Away).
+Corners are not offered: the free odds feed has no corners prices, and every leg needs a real bookmaker price.
+For ou15 the default COMBINED target is lower (1.50): Over 1.5 legs pay only about 1.2-1.4 each, so two of them cannot reach 2.0.
 For 1x2 the default minimum probability is lower (45%) because even a strong favourite rarely reaches 58%; the real 1X2 odds
 come from the same odds request as the other markets (home_win / draw / away_win).
 
@@ -39,6 +41,7 @@ import pandas as pd
 import btts_model as BM
 import config
 import match_result as MR
+import ou15_model as O15
 
 EAT = timezone(timedelta(hours=3))
 
@@ -52,16 +55,22 @@ DEFAULT_LEGS = max(MIN_LEGS, min(MAX_LEGS, int(getattr(config, "ACCA_MAX_LEGS", 
 # market key -> (title, sides in display order)
 MARKETS = {
     "ou25": ("Over/Under 2.5", ("Over", "Under")),
+    "ou15": ("Over/Under 1.5", ("Over", "Under")),
     "btts": ("Both Teams To Score", ("Yes", "No")),
     "1x2": ("Match Result 1X2", ("Home", "Draw", "Away")),
 }
 # the minimum model probability a leg needs, per market (1X2 outcomes are spread over three results, so the bar is lower)
-MARKET_MIN_PROB = {"ou25": DEFAULT_MIN_PROB, "btts": DEFAULT_MIN_PROB,
+MARKET_MIN_PROB = {"ou25": DEFAULT_MIN_PROB, "btts": DEFAULT_MIN_PROB, "ou15": DEFAULT_MIN_PROB,
                    "1x2": float(getattr(config, "ACCA_MIN_LEG_PROB_1X2", 0.45))}
+MARKET_MIN_COMBINED = {"ou15": float(getattr(config, "ACCA_MIN_ODDS_OU15", 1.50))}      # others use ACCA_MIN_ODDS (2.0)
 
 
 def default_min_prob(market):
     return MARKET_MIN_PROB.get(market, DEFAULT_MIN_PROB)
+
+
+def default_min_combined(market):
+    return MARKET_MIN_COMBINED.get(market, DEFAULT_MIN_COMBINED)
 
 
 # ------------------------------------------------------------------ helpers
@@ -100,6 +109,11 @@ def selections_for(m):
     lh, la = m.get("lh"), m.get("la")
     if lh is None or la is None:
         return out
+
+    # Over/Under 1.5 (model probabilities from the same expected goals + real 1.5 odds when the fixture has them)
+    o15 = O15.single(lh, la, m.get("over15_odds"), m.get("under15_odds"))
+    out["ou15"].append(_sel("ou15", "Over", "Over 1.5", o15["p_over"], o15["odds_over"]))
+    out["ou15"].append(_sel("ou15", "Under", "Under 1.5", o15["p_under"], o15["odds_under"]))
 
     # BTTS
     yes_o, no_o = m.get("btts_yes_odds"), m.get("btts_no_odds")
@@ -194,7 +208,7 @@ def build_acca(matches, market, side="best", day=None, legs=None, min_prob=None,
     lo = MIN_LEGS if min_legs is None else max(MIN_LEGS, min(int(min_legs), legs))
     min_prob = default_min_prob(market) if min_prob is None else float(min_prob)
     min_odds = DEFAULT_MIN_ODDS if min_odds is None else float(min_odds)
-    min_combined = DEFAULT_MIN_COMBINED if min_combined is None else max(1.01, float(min_combined))
+    min_combined = default_min_combined(market) if min_combined is None else max(1.01, float(min_combined))
     now = now or datetime.now(timezone.utc)
 
     days = days_available(matches, now)
@@ -364,7 +378,7 @@ def _selftest():
 
     # 7. both markets and every side work; anything else is rejected
     ms2 = [fx(i, 2 + i) for i in (1, 2, 3, 4)]
-    assert set(MARKETS) == {"ou25", "btts", "1x2"}
+    assert set(MARKETS) == {"ou25", "ou15", "btts", "1x2"}
     for mk in ("btts", "ou25"):
         assert isinstance(build_acca(ms2, mk, "best", min_prob=0.0, min_odds=1.0, min_combined=1.5, now=now)["ok"], bool)
     assert build_acca(ms2, "btts", "Yes", min_prob=0.0, min_odds=1.0, min_combined=1.5, now=now)["legs"][0]["label"] == "BTTS Yes"
@@ -387,7 +401,23 @@ def _selftest():
     nox = [fx(i, 2 + i) for i in (1, 2, 3)]                           # fixtures without 1X2 odds: never a model-made price
     rn = build_acca(nox, "1x2", "best", min_prob=0.0, min_odds=1.0, min_combined=1.5, now=now)
     assert not rn["ok"] and rn["funnel"]["with_odds"] == 0 and "real bookmaker odds" in rn["message"]
-    for bad in (("nope", "best"), ("ou25", "Maybe"), ("btts", "Over"), ("ou25", "Yes"), ("1x2", "Over"), ("1x2", "Yes"), ("btts", "Draw")):
+    # Over/Under 1.5: real 1.5 odds only, own default combined target (1.50), sides checked, never a model-made price
+    def fx15(i, hours, lh=2.0, la=1.5, oo=1.25, uo=4.2):
+        d = fx(i, hours, lh=lh, la=la)
+        d.update(over15_odds=oo, under15_odds=uo)
+        return d
+    y = [fx15(i, 2 + i) for i in (1, 2, 3)]
+    r15 = build_acca(y, "ou15", "Over", min_prob=0.5, min_odds=1.1, min_combined=1.5, now=now)
+    assert r15["ok"] and all(l["label"] == "Over 1.5" and l["odds"] == 1.25 for l in r15["legs"]), r15["message"]
+    assert all(abs(l["prob"] - O15.single(2.0, 1.5)["p_over"]) < 1e-9 for l in r15["legs"])
+    assert build_acca(y, "ou15", "Over", now=now)["params"]["min_combined"] == 1.5, "ou15 default combined target"
+    assert build_acca(y, "ou25", "Over", now=now)["params"]["min_combined"] == DEFAULT_MIN_COMBINED
+    rb15 = build_acca(y, "ou15", "best", min_prob=0.5, min_odds=1.1, min_combined=1.5, now=now)
+    assert rb15["ok"] and all(l["side"] == "Over" for l in rb15["legs"]), "best side = the more probable one"
+    no15 = [fx(i, 2 + i) for i in (1, 2, 3)]                          # fixtures without 1.5 odds
+    rn15 = build_acca(no15, "ou15", "best", min_prob=0.0, min_odds=1.0, min_combined=1.2, now=now)
+    assert not rn15["ok"] and rn15["funnel"]["with_odds"] == 0 and "real bookmaker odds" in rn15["message"]
+    for bad in (("nope", "best"), ("ou25", "Maybe"), ("btts", "Over"), ("ou25", "Yes"), ("1x2", "Over"), ("1x2", "Yes"), ("btts", "Draw"), ("ou15", "Yes"), ("ou15", "Home")):
         try:
             build_acca(ms2, *bad, now=now)
             raise AssertionError(f"should have rejected {bad}")

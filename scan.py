@@ -130,6 +130,9 @@ def fetch_event_odds(event_id):
         "home_win": odds.get("home_win"),
         "draw":     odds.get("draw"),
         "away_win": odds.get("away_win"),
+        # Over/Under 1.5 (also in the documented consensus summary)
+        "over_15":  odds.get("over_15_goals"),
+        "under_15": odds.get("under_15_goals"),
     }
 
 
@@ -266,6 +269,8 @@ def get_todays_matches(days=2, min_apps=DEFAULT_MIN_APPS):
             "odds_home":     odds.get("home_win"),
             "odds_draw":     odds.get("draw"),
             "odds_away":     odds.get("away_win"),
+            "over15_odds":   odds.get("over_15"),
+            "under15_odds":  odds.get("under_15"),
             "model_pick":   model_pick,
             "model_prob":   model_prob,
             "book_odds":    book_odds,

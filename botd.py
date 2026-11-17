@@ -8,6 +8,7 @@ probability ("most confident"). Ties go to the better value (expected value), th
 one per match, are listed as runners-up.
 
 Where the fixtures come from, by date:
+  (markets: Over/Under 2.5, Over/Under 1.5, BTTS and 1X2: every one with a real price)
   today / next ~2 days   the saved picks (live odds). Fixtures the API no longer lists because they have kicked off are rebuilt from
                          the odds log, so the day's pick does not change just because a match has started.
   past days              rebuilt from data/odds_log.csv: the last price snapshot logged before each kickoff plus the model's expected
@@ -27,6 +28,7 @@ import acca_builder as AB
 import btts_model as BM
 import config
 import match_result as MR
+import ou15_model as O15
 from odds_logger import LOG_CSV
 
 MIN_ODDS = float(getattr(config, "BOTD_MIN_ODDS", 1.40))
@@ -34,8 +36,9 @@ MAX_ODDS = float(getattr(config, "BOTD_MAX_ODDS", 1.90))
 MIN_PROB = float(getattr(config, "BOTD_MIN_PROB", 0.0))
 RUNNERS_UP = 5
 EAT = timezone(timedelta(hours=3))
-MARKET_LABEL = {"ou25": "Over/Under 2.5", "btts": "Both Teams To Score", "1x2": "Match Result 1X2"}
-PRICE_COLS = ["over_odds", "under_odds", "btts_yes_odds", "btts_no_odds", "odds_home", "odds_draw", "odds_away"]
+MARKET_LABEL = {"ou25": "Over/Under 2.5", "ou15": "Over/Under 1.5", "btts": "Both Teams To Score", "1x2": "Match Result 1X2"}
+PRICE_COLS = ["over_odds", "under_odds", "btts_yes_odds", "btts_no_odds", "odds_home", "odds_draw", "odds_away",
+              "over15_odds", "under15_odds"]
 
 
 # ---------------------------------------------------------------- dates
@@ -95,6 +98,7 @@ def logged_fixtures(iso):
             "over_odds": _num(r["over_odds"]), "under_odds": _num(r["under_odds"]),
             "btts_yes_odds": _num(r["btts_yes_odds"]), "btts_no_odds": _num(r["btts_no_odds"]),
             "odds_home": _num(r["odds_home"]), "odds_draw": _num(r["odds_draw"]), "odds_away": _num(r["odds_away"]),
+            "over15_odds": _num(r["over15_odds"]), "under15_odds": _num(r["under15_odds"]),
             "source": "log",
         })
     return out
@@ -145,6 +149,8 @@ def outcome(market, side, hg, ag):
     """True / False: did the selection win, given the final score."""
     if market == "ou25":
         return (hg + ag > 2) == (side == "Over")
+    if market == "ou15":
+        return (hg + ag > 1) == (side == "Over")
     if market == "btts":
         return ((hg > 0 and ag > 0) == (side == "Yes"))
     if market == "1x2":
@@ -168,6 +174,7 @@ def _breakdown(m):
     lh, la = m["lh"], m["la"]
     b = BM.single(lh, la, m.get("btts_yes_odds"), m.get("btts_no_odds"))
     x = MR.single(lh, la, m.get("odds_home"), m.get("odds_draw"), m.get("odds_away"))
+    o15 = O15.single(lh, la, m.get("over15_odds"), m.get("under15_odds"))
     po, pu, top = model.over_under_2_5(lh, la)
     return {
         "lh": round(lh, 2), "la": round(la, 2),
@@ -175,6 +182,7 @@ def _breakdown(m):
         "ou": {"p_over": round(m["po"] / 100.0, 4) if m.get("po") is not None else round(po, 4),
                "p_under": round(m["pu"] / 100.0, 4) if m.get("pu") is not None else round(pu, 4),
                "odds_over": m.get("over_odds"), "odds_under": m.get("under_odds")},
+        "ou15": {"p_over": o15["p_over"], "p_under": o15["p_under"], "odds_over": o15["odds_over"], "odds_under": o15["odds_under"]},
         "btts": {"p_yes": b["p_yes"], "p_no": b["p_no"], "odds_yes": m.get("btts_yes_odds"), "odds_no": m.get("btts_no_odds")},
         "x12": {"p_home": x["p_home"], "p_draw": x["p_draw"], "p_away": x["p_away"], "odds_home": x["odds_home"],
                 "odds_draw": x["odds_draw"], "odds_away": x["odds_away"], "book": x["book"]},
@@ -283,6 +291,14 @@ def _selftest():
     # the card's breakdown shows the same probability as the headline pick
     v = day_view("2026-11-10", [p1], now=now, scores={})
     assert abs(v["pick"]["breakdown"]["ou"]["p_over"] - v["pick"]["prob"]) < 1e-9
+    # Over/Under 1.5 with a real price in range can be picked and is graded on total goals >= 2
+    o15 = fx(50, 3, lh=2.6, la=1.7, po=70.0, over15_odds=1.40, under15_odds=3.2)
+    c15 = candidates(o15)
+    assert [c["label"] for c in c15] == ["Over 1.5"] and c15[0]["market"] == "ou15" and c15[0]["prob"] > 0.85
+    v = day_view("2026-11-10", [o15], now=now, scores={50: (1, 0)})
+    assert v["pick"]["market"] == "ou15" and v["pick"]["market_label"] == "Over/Under 1.5" and v["pick"]["result"] == "lost"
+    assert outcome("ou15", "Over", 1, 1) and not outcome("ou15", "Over", 1, 0) and outcome("ou15", "Under", 0, 1) and not outcome("ou15", "Under", 2, 0)
+    assert "ou15" in v["pick"]["breakdown"]
     # a 1X2 selection with real odds can win the day
     x = fx(40, 3, lh=2.4, la=0.7, po=60.0, odds_home=1.55, odds_draw=4.5, odds_away=7.0)
     v = day_view("2026-11-10", [x], now=now, scores={})

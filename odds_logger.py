@@ -33,8 +33,10 @@ LOG_CSV = "data/odds_log.csv"
 COLUMNS = ["logged_at", "event_id", "kickoff", "hours_to_kickoff", "league_id",
            "home", "away", "lh", "la", "p_over", "over_odds", "under_odds", "model",
            # added later: the other markets' prices, so the Bet of the Day tab can rebuild past days (older rows leave them empty)
-           "btts_yes_odds", "btts_no_odds", "odds_home", "odds_draw", "odds_away"]
-ODDS_COLS = ["over_odds", "under_odds", "btts_yes_odds", "btts_no_odds", "odds_home", "odds_draw", "odds_away"]
+           "btts_yes_odds", "btts_no_odds", "odds_home", "odds_draw", "odds_away",
+           "over15_odds", "under15_odds"]
+ODDS_COLS = ["over_odds", "under_odds", "btts_yes_odds", "btts_no_odds", "odds_home", "odds_draw", "odds_away",
+             "over15_odds", "under15_odds"]
 MODEL_TAG = "ridge_v1"
 RETRY_MIN = 10          # --watch retry interval when offline / failing
 
@@ -99,7 +101,8 @@ def log_snapshot(matches, verbose=False):
         eid = int(m["event_id"])
         prices = {"over_odds": over_o, "under_odds": under_o, "btts_yes_odds": m.get("btts_yes_odds"),
                   "btts_no_odds": m.get("btts_no_odds"), "odds_home": m.get("odds_home"),
-                  "odds_draw": m.get("odds_draw"), "odds_away": m.get("odds_away")}
+                  "odds_draw": m.get("odds_draw"), "odds_away": m.get("odds_away"),
+                  "over15_odds": m.get("over15_odds"), "under15_odds": m.get("under15_odds")}
         if eid in seen and seen[eid] == _okey([prices[c] for c in ODDS_COLS]):
             continue                      # nothing changed
         rows.append({
@@ -118,6 +121,7 @@ def log_snapshot(matches, verbose=False):
             "model": MODEL_TAG,
             "btts_yes_odds": prices["btts_yes_odds"], "btts_no_odds": prices["btts_no_odds"],
             "odds_home": prices["odds_home"], "odds_draw": prices["odds_draw"], "odds_away": prices["odds_away"],
+            "over15_odds": prices["over15_odds"], "under15_odds": prices["under15_odds"],
         })
     if rows:
         os.makedirs("data", exist_ok=True)
