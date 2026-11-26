@@ -55,6 +55,12 @@ MISSING_CSV = os.path.join(DATA_DIR, "stats_missing.csv")
 USAGE_JSON = os.path.join(DATA_DIR, "stats_usage.json")
 GIVE_UP_TRIES, GIVE_UP_AGE_DAYS = 3, 7
 MODEL_HALF_LIFE = float(getattr(config, "STATS_HALF_LIFE", 180.0))
+# Out-of-sample calibration of every stat's expected value. Walk-forward tests on real corner data showed the raw per-team ratings were about twice as
+# spread out as the evidence supports (80-90% predictions came true 79% of the time; the model barely beat the base rate). Each refit now measures,
+# on the last 120 days it did not train on, how much of its predicted deviation from average is real (the calibration slope) and shrinks the expected
+# value by that factor. A well-calibrated stat gets a slope near 1 and is left alone; the slope is never raised above 1 or lowered below 0.25.
+AUTO_CALIBRATE = bool(getattr(config, "STATS_AUTO_CALIBRATE", True))
+CAL_MIN_SLOPE = 0.25
 MIN_FIT_MATCHES = 200
 HEADERS = {"Authorization": f"Token {BZZOIRO_API_KEY}"}
 XG_WORKERS = getattr(config, "XG_WORKERS", 8)
@@ -417,6 +423,25 @@ def _nb_k(mu, y):
     return float(np.clip(np.sum(mu ** 2) / den, 3.0, 300.0)) if den > 0 else 300.0
 
 
+def _slope(mu, y):
+    """Calibration slope of the expected value: regression of what happened on what was predicted, out of sample (1 = calibrated, <1 = too extreme)."""
+    mu, y = np.asarray(mu, float), np.asarray(y, float)
+    var = float(np.var(mu)) if len(mu) else 0.0
+    if len(mu) < 100 or var < 1e-9:
+        return {"slope": 1.0, "center": float(mu.mean()) if len(mu) else 0.0}
+    b = float(np.mean((mu - mu.mean()) * (y - y.mean())) / var)
+    return {"slope": float(np.clip(b, CAL_MIN_SLOPE, 1.0)), "center": float(mu.mean())}
+
+
+def adjust_mu(mdl, mu, kind="for"):
+    """The expected value after the out-of-sample calibration: shrunk toward the model's own average by the measured slope (mean-preserving).
+    kind: 'for' (one team's number) or 'total' (both teams). A no-op when AUTO_CALIBRATE is off or the model has no holdout."""
+    cal = mdl.get("cal_total" if kind == "total" else "cal_for") if mdl else None
+    if not AUTO_CALIBRATE or not cal:
+        return mu
+    return max(0.05, cal["center"] + cal["slope"] * (mu - cal["center"]))
+
+
 def stat_model(df, store, key, cutoff):
     """{'fit','k_for','k_total'} for one stat as of `cutoff`, or None when there is too little data."""
     from model import fit_model, lambdas_from_fit
@@ -435,13 +460,25 @@ def stat_model(df, store, key, cutoff):
         split = cutoff - pd.Timedelta(days=120)
         old, recent = past[past["date"] < split], past[past["date"] >= split]
         k_for = k_tot = 60.0
+        cal_for = cal_tot = {"slope": 1.0, "center": 0.0}
         if len(old) >= MIN_FIT_MATCHES and len(recent) >= 100:
             f2 = fit_model(old, now=split, half_life=MODEL_HALF_LIFE, ridge=ridge, xg_weight=1.0)
             mus = np.array([lambdas_from_fit(f2, r.home_team_id, r.away_team_id, r.league_id) for r in recent.itertuples()])
             ys = recent[["home_xg", "away_xg"]].values
-            k_for = _nb_k(mus.ravel(), ys.ravel())
-            k_tot = _nb_k(mus.sum(axis=1), ys.sum(axis=1))
-        out = {"fit": fit, "k_for": k_for, "k_total": k_tot, "ridge": ridge}
+            raw_tot, y_tot = mus.sum(axis=1), ys.sum(axis=1)
+            hold_for, hold_tot = _slope(mus.ravel(), ys.ravel()), _slope(raw_tot, y_tot)
+            if AUTO_CALIBRATE:       # the spread is measured on the calibrated holdout predictions, so k matches what is actually shown
+                mus_c = hold_for["center"] + hold_for["slope"] * (mus - hold_for["center"])
+                tot_c = hold_tot["center"] + hold_tot["slope"] * (raw_tot - hold_tot["center"])
+            else:
+                mus_c, tot_c = mus, raw_tot
+            k_for = _nb_k(mus_c.ravel(), ys.ravel())
+            k_tot = _nb_k(tot_c, y_tot)
+            # the shrink is applied around the MAIN model's own average on those recent matches, so its overall level is unchanged
+            mm = np.array([lambdas_from_fit(fit, r.home_team_id, r.away_team_id, r.league_id) for r in recent.itertuples()])
+            cal_for = {"slope": hold_for["slope"], "center": float(mm.mean())}
+            cal_tot = {"slope": hold_tot["slope"], "center": float(mm.sum(axis=1).mean())}
+        out = {"fit": fit, "k_for": k_for, "k_total": k_tot, "ridge": ridge, "cal_for": cal_for, "cal_total": cal_tot}
     if len(_MODELS) > 40:
         _MODELS.clear()
     _MODELS[ck] = out
@@ -631,6 +668,7 @@ def build_cards(fixtures):
                                 mh, ma = exp[key]
                                 mu = {"for": mh if side_name == "h" else ma, "against": ma if side_name == "h" else mh,
                                       "total": mh + ma}[variant]
+                                mu = adjust_mu(models[key], mu, "total" if variant == "total" else "for")      # out-of-sample calibrated
                                 k = models[key]["k_total" if variant == "total" else "k_for"]
                             cards.append({
                                 "event_id": f["event_id"], "team": name, "opp": opp_name, "where": where,

@@ -708,8 +708,9 @@
                     </div>
                     <div class="no-filter-results" id="cNoFilter">No matches on this date.</div>
                     <div class="hint" style="margin-top:10px;">
-                        Built on {{ corner_info.matches_with_corners }} finished matches with corner stats. Run <b>python corners_backtest.py</b> to check how well calibrated it is on your data.
-                        The "fair odds" are 1 ÷ the model's probability, not a bookmaker price.
+                        Built on {{ corner_info.matches_with_corners }} finished matches with corner stats. Corners are a noisy stat: the raw team ratings were about twice as spread out as the evidence supports,
+                        so each probability is pulled toward the average by a measured <b>calibration slope of {{ corner_info.calibration }}</b> (1.0 = no pull). Expect modest differences between fixtures.
+                        Run <b>python corners_backtest.py</b> to see the raw and calibrated model side by side on your data. The "fair odds" are 1 ÷ the model's probability, not a bookmaker price.
                     </div>
                 {% else %}
                     <div class="empty">No upcoming matches to predict.<br><span class="hint">Corners use the same fixtures as All Matches.</span></div>

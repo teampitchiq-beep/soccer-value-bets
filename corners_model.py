@@ -5,7 +5,9 @@ Corners: expected corners per team and the probability of the match going Over /
   Model     the same ridge for/against engine as the goals, xG and shots models, fitted on corners (corner_kicks from the stats endpoint,
             recency-weighted, opponent-adjusted, with its own baseline and home advantage per league): a team's corners-for strength against
             the opponent's corners-conceded weakness gives its expected corners, and the two add up to the expected match total (the "mean").
-            A negative binomial, whose spread is measured out of sample on the last 120 days, turns that mean into P(total corners > line).
+            The raw ratings turned out to be about twice as spread out as the evidence supports (see Calibration), so the expected value is shrunk toward the
+            average by a slope measured out of sample on the last 120 days (match_stats.adjust_mu). A negative binomial, whose spread is measured on those
+            same calibrated holdout predictions, turns the mean into P(total corners > line).
             It is the same engine as the Corners cards in the Trends tab (match_stats.stat_model), so the two always agree.
   Line      CORNERS_LINE = 7.5 in config.py: "Over 7.5" means 8 or more corners in the match.
   Odds      NONE. Bzzoiro's free odds feed has no corners prices (they exist only in the paid comparison endpoint), so this is a model-only market:
@@ -14,12 +16,16 @@ Corners: expected corners per team and the probability of the match going Over /
   Data      needs corner stats for at least MIN_FIT_MATCHES (200) finished matches. They come from the stats loader (up to STATS_DAILY_BUDGET a
             day), so a fresh install fills over a few days; until then the tab says how many it has.
 
-Check the calibration on YOUR data before trusting it:   python corners_backtest.py
+Calibration (walk-forward on 2,856 of your matches, before this correction): Over 7.5 happened 73.5% of the time and the model averaged 70.9%; its 80-90% calls came
+true 78.8% of the time and its sub-50% calls 75%; log loss 0.5773 vs 0.5783 for always predicting the base rate, i.e. no skill beyond the base rate. A halfway shrink toward the
+base rate would have been worth about +0.005 log loss. Corners are a noisy stat: expect modest, not dramatic, differences between fixtures.
+Check it on YOUR data:   python corners_backtest.py   (reports the raw and the calibrated model side by side)
 
 Optional settings (config.py):
     CORNERS_LINE         = 7.5
-    CORNERS_HIGH_PROB    = 0.85    # confidence tiers on the probability of the model's pick
+    CORNERS_HIGH_PROB    = 0.80    # confidence tiers on the probability of the model's pick (calibrated probabilities sit close to the ~73% base rate)
     CORNERS_MEDIUM_PROB  = 0.75
+    STATS_AUTO_CALIBRATE = True    # turn the out-of-sample shrink off (config.py) to see the raw ratings
 """
 from datetime import datetime, timezone
 
@@ -30,7 +36,7 @@ import match_stats as MS
 import shots_data as SD
 
 LINE = float(getattr(config, "CORNERS_LINE", 7.5))
-HIGH_PROB = float(getattr(config, "CORNERS_HIGH_PROB", 0.85))
+HIGH_PROB = float(getattr(config, "CORNERS_HIGH_PROB", 0.80))
 MEDIUM_PROB = float(getattr(config, "CORNERS_MEDIUM_PROB", 0.75))
 MIN_FIT_MATCHES = MS.MIN_FIT_MATCHES
 
@@ -67,12 +73,16 @@ def fixture(mdl, home_id, away_id, league_id, line=None):
     if home_id not in fit["tidx"] or away_id not in fit["tidx"]:
         return None
     mh, ma = lambdas_from_fit(fit, home_id, away_id, league_id)
-    mu = mh + ma
+    raw = mh + ma
+    mu = MS.adjust_mu(mdl, raw, "total")                    # calibrated expected match total
+    scale = mu / raw if raw > 0 else 1.0
+    mh, ma = mh * scale, ma * scale                         # the two teams keep their share of it
     p_over = MS.p_line(mu, mdl["k_total"], line, "Over")
     over = p_over >= 0.5
     prob = p_over if over else 1.0 - p_over
     return {
-        "line": line, "xc_home": round(mh, 1), "xc_away": round(ma, 1), "xc_total": round(mu, 1),
+        "line": line, "xc_home": round(mh, 1), "xc_away": round(ma, 1), "xc_total": round(mu, 1), "xc_raw_total": round(raw, 1),
+        "calibration": round(mdl["cal_total"]["slope"], 2),
         "p_over": round(p_over, 4), "p_under": round(1.0 - p_over, 4),
         "fair_over": round(1.0 / p_over, 2) if p_over > 0 else None,
         "fair_under": round(1.0 / (1.0 - p_over), 2) if p_over < 1 else None,
@@ -114,7 +124,7 @@ def corner_predictions(matches, df=None, store=None):
     if mdl is None:
         info["message"] = "Not enough corner data to fit the model yet."
         return [], info
-    info.update(ready=True, k=round(mdl["k_total"], 1))
+    info.update(ready=True, k=round(mdl["k_total"], 1), calibration=round(mdl["cal_total"]["slope"], 2))
     rows = []
     for m in matches:
         try:
@@ -166,6 +176,16 @@ def _selftest():
     # the probability is exactly the negative-binomial tail at the line: Over 7.5 = 8 or more corners
     mu = p["xc_total"]
     assert abs(MS.p_line(mu, mdl["k_total"], 7.5, "Over") - (1 - nbinom.cdf(7, mdl["k_total"], mdl["k_total"] / (mdl["k_total"] + mu)))) < 1e-12
+    # calibration: shrinks toward the model's own average by the slope, keeps the level, never expands, and can be switched off
+    fake = {"cal_total": {"slope": 0.5, "center": 10.0}, "cal_for": {"slope": 0.5, "center": 5.0}}
+    assert abs(MS.adjust_mu(fake, 12.0, "total") - 11.0) < 1e-9 and abs(MS.adjust_mu(fake, 10.0, "total") - 10.0) < 1e-9
+    assert abs(MS.adjust_mu(fake, 6.0, "for") - 5.5) < 1e-9 and MS.adjust_mu({"cal_total": {"slope": 1.0, "center": 9.0}}, 12.0, "total") == 12.0
+    MS.AUTO_CALIBRATE = False
+    try:
+        assert MS.adjust_mu(fake, 12.0, "total") == 12.0
+    finally:
+        MS.AUTO_CALIBRATE = True
+    assert 0.25 <= mdl["cal_total"]["slope"] <= 1.0 and p["calibration"] == round(mdl["cal_total"]["slope"], 2)
     # a team that has never been seen is not predicted at all
     assert fixture(mdl, 100, 9999, 1) is None
     # a higher mean means a higher chance of Over (monotonic)
@@ -179,7 +199,7 @@ def _selftest():
     assert info["ready"] and info["covered"] == 1 and [r["event_id"] for r in rows_] == [2, 1] and rows_[0]["ready"] is False and rows_[1]["ready"] is True
     pred, i2 = single(100, 101, 1, df, store)
     assert pred and pred["pick"] in ("Over 7.5", "Under 7.5") and i2["ready"]
-    assert tier(0.9) == "HIGH" and tier(0.8) == "MEDIUM" and tier(0.6) == "LOW"
+    assert tier(0.9) == "HIGH" and tier(0.80) == "HIGH" and tier(0.78) == "MEDIUM" and tier(0.6) == "LOW"
     print("corners_model self-test passed")
 
 

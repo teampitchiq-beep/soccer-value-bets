@@ -45,7 +45,8 @@ def run(df, store, start=None, refit_days=14, lines=(6.5, 7.5, 8.5, 9.5, 10.5), 
         if mdl is None or r.home_team_id not in mdl["fit"]["tidx"] or r.away_team_id not in mdl["fit"]["tidx"]:
             continue
         mh, ma = lambdas_from_fit(mdl["fit"], r.home_team_id, r.away_team_id, r.league_id)
-        row = {"date": r.date, "mu": mh + ma, "k": mdl["k_total"],
+        raw = mh + ma
+        row = {"date": r.date, "mu_raw": raw, "mu": MS.adjust_mu(mdl, raw, "total"), "slope": mdl["cal_total"]["slope"], "k": mdl["k_total"],
                "actual": float(have.loc[r.event_id, "corners_h"] + have.loc[r.event_id, "corners_a"])}
         out.append(row)
     return pd.DataFrame(out) if out else None
@@ -54,21 +55,28 @@ def run(df, store, start=None, refit_days=14, lines=(6.5, 7.5, 8.5, 9.5, 10.5), 
 def report(res, line):
     from scipy.stats import nbinom, poisson
     mu, k, actual = res["mu"].values, res["k"].values, res["actual"].values
+    mu_raw = res["mu_raw"].values
     y = (actual > line).astype(int)
 
     def p_over(mu_, k_, ln):
         return 1.0 - nbinom.cdf(int(np.floor(ln)), k_, k_ / (k_ + mu_))
     p = p_over(mu, k, line)
+    p_raw = p_over(mu_raw, k, line)
     base = np.full(len(y), y.mean())
     print(f"\n=== Over {line:g} corners: {len(y)} test matches ===")
     print(f"Over happened {y.mean() * 100:.1f}% of the time | the model's average probability {p.mean() * 100:.1f}%")
     print(f"expected total corners: model average {mu.mean():.2f} vs actual {actual.mean():.2f} (bias {mu.mean() - actual.mean():+.2f}) | mean absolute error {np.abs(mu - actual).mean():.2f}")
+    graw = _ll(base, y) - _ll(p_raw, y)
+    print(f"RAW ratings (no calibration):  average probability {p_raw.mean() * 100:.1f}% | log loss {_ll(p_raw, y).mean():.4f} | gain over the base rate {graw.mean():+.4f} ± {1.96 * graw.std(ddof=1) / np.sqrt(len(y)):.4f}")
+    print(f"CALIBRATED (what the tab shows): average probability {p.mean() * 100:.1f}% | average calibration slope {res['slope'].mean():.2f} (1.0 = the raw ratings were already right)")
     gain = _ll(base, y) - _ll(p, y)
-    print(f"log loss {_ll(p, y).mean():.4f} vs {_ll(base, y).mean():.4f} for always predicting the base rate | gain {gain.mean():+.4f} ± {1.96 * gain.std(ddof=1) / np.sqrt(len(y)):.4f}")
+    print(f"calibrated log loss {_ll(p, y).mean():.4f} vs {_ll(base, y).mean():.4f} for always predicting the base rate | gain {gain.mean():+.4f} ± {1.96 * gain.std(ddof=1) / np.sqrt(len(y)):.4f}")
+    gd = _ll(p_raw, y) - _ll(p, y)
+    print(f"calibration vs raw: {gd.mean():+.4f} ± {1.96 * gd.std(ddof=1) / np.sqrt(len(y)):.4f} log loss (positive = the calibration helps)")
     pp = 1.0 - poisson.cdf(int(np.floor(line)), mu)
     g2 = _ll(pp, y) - _ll(p, y)
     print(f"negative-binomial spread vs plain Poisson: {g2.mean():+.4f} ± {1.96 * g2.std(ddof=1) / np.sqrt(len(y)):.4f} log loss (positive = the spread helps)")
-    print("calibration by predicted P(Over):")
+    print("calibration by predicted P(Over) (calibrated):")
     edges = [0, .5, .6, .7, .8, .9, 1.01]
     for lo, hi in zip(edges[:-1], edges[1:]):
         s = (p >= lo) & (p < hi)
